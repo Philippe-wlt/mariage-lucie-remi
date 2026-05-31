@@ -176,6 +176,7 @@
           <input type="text" id="searchGuest" placeholder="🔍 Rechercher…" oninput="renderGuestsTable()">
           <select id="filterCat" onchange="renderGuestsTable()"><option value="">Toutes catégories</option></select>
           <span id="guestCount" style="color:var(--muted);font-size:13px;margin-left:auto;"></span>
+          <button class="btn btn-danger btn-sm" onclick="clearAllGuests()" title="Supprimer toute la liste">🗑️ Vider la liste</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -349,8 +350,9 @@
           <div class="card-title">🔄 Import — Mise à jour des réponses</div>
           <div class="notice">
             Utilisez cet import pour <strong>mettre à jour les réponses et invitations remises</strong> d'invités déjà présents dans l'application.<br><br>
-            <strong>Colonne obligatoire :</strong><br>
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">Nom</code> — doit correspondre exactement au nom dans l'application<br><br>
+            <strong>Colonnes d'identification :</strong><br>
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">Nom</code> — obligatoire<br>
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">Catégorie</code> — <strong>recommandé si plusieurs invités ont le même nom</strong><br><br>
             <strong>Colonnes optionnelles</strong> (laissez vide = non modifié) :<br><br>
             <span style="display:inline-block;background:var(--civil-light);color:var(--civil);padding:2px 6px;border-radius:4px;font-size:11px;font-weight:500;margin-bottom:4px;">CIVIL</span><br>
             <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">CivilReponse</code> : <strong>oui</strong> (présent) / <strong>non</strong> (absent)<br>
@@ -359,9 +361,11 @@
             <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">ReligInvitationRemise</code> : <strong>oui</strong> / <strong>non</strong><br>
             <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">ReligReponseVH</code> : <strong>oui</strong> / <strong>non</strong><br>
             <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">ReligReponseRepas</code> : <strong>oui</strong> / <strong>non</strong><br>
-            <em style="font-size:12px;color:var(--muted);">→ coche automatiquement "a répondu" dès qu'une réponse VH ou Repas est saisie</em><br><br>
+            <em style="font-size:12px;color:var(--muted);">→ coche automatiquement "a répondu"</em><br><br>
             <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">MenusAdulte</code> : nombre &nbsp;
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">MenusEnfant</code> : nombre
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">MenusEnfant</code> : nombre<br><br>
+            <span style="background:var(--green-light);color:var(--green);padding:3px 8px;border-radius:4px;font-size:11px;font-weight:500;">↺ Annule et remplace</span>
+            <span style="font-size:12px;color:var(--muted);margin-left:6px;">Une nouvelle intégration écrase les données précédentes pour les invités concernés.</span>
           </div>
           <div class="import-zone" onclick="document.getElementById('fileInputMaj').click()">
             <div class="icon">🔄</div>
@@ -569,6 +573,27 @@ async function addGuest(){
 async function removeGuest(id){
   if(!confirm('Supprimer cet invité ?'))return;
   state.guests=state.guests.filter(g=>g.id!==id);await dbDeleteGuest(id);renderAll();
+}
+
+async function clearAllGuests(){
+  const n=state.guests.length;
+  if(n===0) return alert('La liste est déjà vide.');
+  const confirmation=prompt(`⚠️ ATTENTION — Cette action est irréversible.\n\nVous allez supprimer les ${n} invité(s) de la liste.\n\nTapez CONFIRMER pour valider :`);
+  if(confirmation!=='CONFIRMER') return;
+  // Suppression en base
+  setSyncStatus('syncing','⏳ Suppression…');
+  try{
+    await db.from('guests').delete().neq('id',0);
+    state.guests=[];
+    state.guestNextId=1;
+    setSyncStatus('ok','✓ Synchronisé');
+    renderAll();
+    alert(`✅ Liste vidée — ${n} invité(s) supprimé(s).`);
+  }catch(e){
+    console.error(e);
+    setSyncStatus('error','✗ Erreur suppression');
+    alert('Erreur lors de la suppression. Veuillez réessayer.');
+  }
 }
 function openEditGuest(id){
   const g=state.guests.find(x=>x.id===id);if(!g)return;
@@ -1000,18 +1025,26 @@ function handleMajImport(event){
     $('importMajPreviewBody').innerHTML=majRows.slice(0,5).map(r=>`<tr>${headers.map(h=>`<td>${r[h]||''}</td>`).join('')}</tr>`).join('');
     if(majRows.length>5) $('importMajPreviewBody').innerHTML+=`<tr><td colspan="${headers.length}" style="text-align:center;color:var(--muted);padding:8px;">… et ${majRows.length-5} autres lignes</td></tr>`;
 
-    // Statistiques prévisionnelles
-    let found=0,notfound=[];
+    // Diagnostic : cherche chaque ligne avec nom + catégorie
+    let found=0, notfound=[], ambiguous=[];
     majRows.forEach(r=>{
       const nom=r['Nom']||r['nom']||'';
-      const g=state.guests.find(x=>normName(x.nom)===normName(nom));
-      if(g) found++; else if(nom) notfound.push(nom);
+      const cat=r['Catégorie']||r['categorie']||r['Categorie']||'';
+      if(!nom) return;
+
+      const matches = findGuests(nom, cat);
+      if(matches.length===1) found++;
+      else if(matches.length===0) notfound.push(cat?`${nom} (${cat})`:nom);
+      else ambiguous.push(`${nom} — ${matches.length} correspondances (précisez la Catégorie)`);
     });
+
     const stats=$('importMajStats');
     if(stats){
-      stats.innerHTML=`<strong style="color:var(--green);">✓ ${found} invité(s) reconnu(s)</strong> qui seront mis à jour.`
-        +(notfound.length>0?`<br><span style="color:var(--red);">⚠️ ${notfound.length} nom(s) non trouvé(s) : ${notfound.slice(0,5).map(n=>`<em>${n}</em>`).join(', ')}${notfound.length>5?' …':''}</span>`:'')
-        +`<br><span style="color:var(--muted);font-size:12px;">Les colonnes vides ne modifient pas les données existantes.</span>`;
+      let html=`<strong style="color:var(--green);">✓ ${found} invité(s) identifié(s) avec certitude</strong>`;
+      if(ambiguous.length) html+=`<br><span style="color:var(--gold);">⚠️ ${ambiguous.length} doublon(s) de nom :</span><ul style="margin:4px 0 4px 16px;font-size:12px;">${ambiguous.map(a=>`<li>${a}</li>`).join('')}</ul>`;
+      if(notfound.length) html+=`<br><span style="color:var(--red);">✗ ${notfound.length} introuvable(s) : ${notfound.slice(0,5).map(n=>`<em>${n}</em>`).join(', ')}${notfound.length>5?' …':''}</span>`;
+      html+=`<br><span style="color:var(--muted);font-size:12px;">Colonnes vides = données existantes conservées. Les invités ambigus ou introuvables seront ignorés.</span>`;
+      stats.innerHTML=html;
     }
   };
   reader.readAsText(file,'UTF-8');
@@ -1033,31 +1066,31 @@ function parseBool(v){
 
 async function confirmMajImport(){
   if(!majRows.length) return;
-  let updated=0, skipped=0;
+  let updated=0, skipped=0, ambig=0;
 
   for(const r of majRows){
     const nom=r['Nom']||r['nom']||'';
     if(!nom) continue;
-    const g=state.guests.find(x=>normName(x.nom)===normName(nom));
-    if(!g){ skipped++; continue; }
+    const cat=r['Catégorie']||r['categorie']||r['Categorie']||'';
+    const matches=findGuests(nom,cat);
 
-    // Civil
+    if(matches.length===0){ skipped++; continue; }
+    if(matches.length>1){ ambig++; continue; } // doublon non résolu → ignoré
+    const g=matches[0];
+
     const civilRep    = parseOuiNon(r['CivilReponse']);
-    // Religieux
     const religRemise = parseBool(r['ReligInvitationRemise']);
     const religRepVH  = parseOuiNon(r['ReligReponseVH']);
     const religRepRep = parseOuiNon(r['ReligReponseRepas']);
     const menusA      = r['MenusAdulte']!==undefined&&r['MenusAdulte']!==''?parseInt(r['MenusAdulte'])||0:null;
     const menusE      = r['MenusEnfant']!==undefined&&r['MenusEnfant']!==''?parseInt(r['MenusEnfant'])||0:null;
 
-    // Applique seulement les valeurs non-nulles
-    // Si une réponse est fournie → "a répondu" est automatiquement coché
-    if(civilRep    !== null){ g.civil_rep = civilRep; g.civil_repondu = true; }
-    if(religRemise !== null)  g.relig_remise    = religRemise;
-    if(religRepVH  !== null){ g.relig_rep_vh    = religRepVH;   g.relig_repondu = true; }
-    if(religRepRep !== null){ g.relig_rep_repas = religRepRep;  g.relig_repondu = true; }
-    if(menusA      !== null)  g.menus_adulte    = menusA;
-    if(menusE      !== null)  g.menus_enfant    = menusE;
+    if(civilRep    !== null){ g.civil_rep        = civilRep;    g.civil_repondu  = true; }
+    if(religRemise !== null)  g.relig_remise      = religRemise;
+    if(religRepVH  !== null){ g.relig_rep_vh      = religRepVH;  g.relig_repondu = true; }
+    if(religRepRep !== null){ g.relig_rep_repas   = religRepRep; g.relig_repondu = true; }
+    if(menusA      !== null)  g.menus_adulte      = menusA;
+    if(menusE      !== null)  g.menus_enfant      = menusE;
 
     await dbSaveGuest(g);
     updated++;
@@ -1065,7 +1098,10 @@ async function confirmMajImport(){
 
   cancelMajImport();
   renderAll();
-  alert(`✅ Mise à jour terminée !\n\n✓ ${updated} invité(s) mis à jour${skipped>0?`\n⚠️ ${skipped} ligne(s) ignorée(s) (nom non trouvé)`:''}`);
+  let msg=`✅ Mise à jour terminée !\n\n✓ ${updated} invité(s) mis à jour`;
+  if(skipped) msg+=`\n✗ ${skipped} ligne(s) ignorée(s) (nom introuvable)`;
+  if(ambig)   msg+=`\n⚠️ ${ambig} ligne(s) ignorée(s) (doublon de nom sans catégorie — relancez l'import avec la colonne Catégorie renseignée)`;
+  alert(msg);
 }
 
 function cancelMajImport(){
@@ -1074,10 +1110,25 @@ function cancelMajImport(){
   majRows=[];
 }
 
+// Recherche un invité par nom + catégorie optionnelle
+// - Si catégorie fournie : cherche nom ET catégorie (résout les doublons)
+// - Si pas de catégorie  : cherche sur le nom seul (peut retourner plusieurs résultats)
+function findGuests(nom, cat){
+  const n=normName(nom);
+  const c=normName(cat);
+  if(c){
+    // Cherche d'abord nom + catégorie exacte
+    const exact=state.guests.filter(g=>normName(g.nom)===n && normName(g.cat)===c);
+    if(exact.length>0) return exact;
+  }
+  // Fallback : nom seul
+  return state.guests.filter(g=>normName(g.nom)===n);
+}
+
 function downloadMajTemplate(){
-  // Génère un CSV pré-rempli avec les noms des invités existants
-  const headers='Nom;CivilReponse;ReligInvitationRemise;ReligReponseVH;ReligReponseRepas;MenusAdulte;MenusEnfant';
-  const rows=state.guests.map(g=>`${g.nom};;;;;;`).join('\n');
+  // Génère un CSV pré-rempli avec les noms ET catégories des invités existants
+  const headers='Nom;Catégorie;CivilReponse;ReligInvitationRemise;ReligReponseVH;ReligReponseRepas;MenusAdulte;MenusEnfant';
+  const rows=state.guests.map(g=>`${g.nom};${g.cat};;;;;;`).join('\n');
   const csv=headers+'\n'+rows+'\n';
   const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='maj-reponses.csv';a.click();
