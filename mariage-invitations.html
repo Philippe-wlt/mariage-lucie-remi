@@ -18,27 +18,6 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Jost', sans-serif; background: var(--cream); color: var(--text); min-height: 100vh; }
 
-  /* ── LOGIN ── */
-  #loginScreen {
-    display: flex; align-items: center; justify-content: center;
-    min-height: 100vh; background: var(--dark);
-  }
-  .login-box {
-    background: var(--white); border-radius: 16px; padding: 48px 40px;
-    width: 360px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
-  }
-  .login-logo { font-family: 'Cormorant Garamond', serif; font-size: 36px; font-weight: 300; color: var(--dark); margin-bottom: 4px; }
-  .login-logo em { color: var(--gold); font-style: italic; }
-  .login-sub { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); margin-bottom: 32px; }
-  .login-field { width: 100%; padding: 13px 16px; border: 1px solid var(--border); border-radius: 8px; font-family: 'Jost', sans-serif; font-size: 15px; color: var(--text); text-align: center; letter-spacing: 3px; margin-bottom: 12px; transition: border 0.2s; }
-  .login-field:focus { outline: none; border-color: var(--gold); }
-  .btn-login { width: 100%; padding: 14px; background: var(--gold); color: white; border: none; border-radius: 8px; font-family: 'Jost', sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; letter-spacing: 1px; transition: background 0.2s; }
-  .btn-login:hover { background: var(--gold-light); }
-  .login-error { color: var(--red); font-size: 12px; margin-top: 10px; min-height: 18px; }
-  .login-note { font-size: 11px; color: var(--muted); margin-top: 18px; }
-  #configWarning { display:none; background:#fff3cd; border:1px solid #ffc107; border-radius:8px; padding:14px; margin-bottom:18px; font-size:12px; color:#856404; text-align:left; line-height:1.6; }
-  #configWarning code { background:rgba(0,0,0,0.08); padding:1px 5px; border-radius:3px; }
-
   /* ── APP ── */
   #appScreen { display: none; }
   .header { background: var(--dark); padding: 20px 40px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 30px rgba(0,0,0,0.3); }
@@ -66,7 +45,6 @@
   .btn-danger { background: var(--red-light); color: var(--red); border: 1px solid #e0b0b0; } .btn-danger:hover { background: var(--red); color: white; }
   .btn-sm { padding: 6px 12px; font-size: 12px; }
   .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--muted); } .btn-outline:hover { border-color: var(--gold); color: var(--gold); }
-  .btn-lock { background: transparent; border: 1px solid #555; color: #aaa; font-size: 12px; padding: 6px 14px; } .btn-lock:hover { border-color: var(--red); color: var(--red); }
   .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   thead { background: var(--dark); }
@@ -122,21 +100,8 @@
 </head>
 <body>
 
-<!-- ── LOGIN ── -->
-<div id="loginScreen">
-  <div class="login-box">
-    <div id="configWarning"></div>
-    <div class="login-logo">✦ Lucie <em>&</em> Rémi</div>
-    <div class="login-sub">Gestion des invitations</div>
-    <input class="login-field" type="password" id="loginPassword" placeholder="Mot de passe" onkeydown="if(event.key==='Enter')doLogin()">
-    <button class="btn-login" onclick="doLogin()">Accéder →</button>
-    <div class="login-error" id="loginError"></div>
-    <div class="login-note">Accès réservé à la famille</div>
-  </div>
-</div>
-
 <!-- ── APP ── -->
-<div id="appScreen">
+<div id="appScreen" style="display:block;">
   <div class="header">
     <div>
       <div class="header-title">✦ Mariage de <span>Lucie & Rémi</span></div>
@@ -144,7 +109,6 @@
     </div>
     <div class="header-right">
       <span id="syncStatus" class="sync-indicator">✓ Synchronisé</span>
-      <button class="btn btn-lock btn-sm" onclick="doLogout()">🔒 Verrouiller</button>
     </div>
   </div>
 
@@ -356,66 +320,21 @@
 // ============================================================
 //  ⚙️  CONFIGURATION — À MODIFIER AVANT UTILISATION
 // ============================================================
-const SUPABASE_URL = 'VOTRE_URL_SUPABASE';    // ex: https://abcxyz.supabase.co
-const SUPABASE_KEY = 'VOTRE_CLE_PUBLIQUE';    // clé "anon/public" dans Supabase > Settings > API
+const SUPABASE_URL = 'https://pbjrkxnctfvwvuynsyzf.supabase.co';    // ex: https://abcxyz.supabase.co
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBianJreG5jdGZ2d3Z1eW5zeXpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyMjU2NTMsImV4cCI6MjA5NTgwMTY1M30.2KXVLHgQIfs-jCU4WsQb6sYRX1DEn_k1Y_QvmdOkb1M';    // clé "anon/public" dans Supabase > Settings > API
 
-// Mot de passe pour accéder à l'application
-// Choisissez un mot de passe et remplacez la valeur ci-dessous
-const APP_PASSWORD = 'VOTRE_MOT_DE_PASSE';   // ex: 'Lucie2025!'
 // ============================================================
 
-const SESSION_KEY = 'mariage_auth_ok';
 let db = null;
 
 // ── INIT ──
-window.onload = function() {
-  const configured = SUPABASE_URL !== 'VOTRE_URL_SUPABASE';
-  const authed = sessionStorage.getItem(SESSION_KEY) === 'true';
-
-  if (!configured) {
-    document.getElementById('configWarning').innerHTML =
-      '⚠️ <strong>Configuration requise</strong> — Ouvrez le fichier avec un éditeur de texte et remplacez <code>VOTRE_URL_SUPABASE</code>, <code>VOTRE_CLE_PUBLIQUE</code> et <code>VOTRE_MOT_DE_PASSE</code> par vos vraies valeurs (voir le guide).';
-    document.getElementById('configWarning').style.display = 'block';
-  }
-
-  if (authed && configured) {
-    startApp();
-  } else {
-    document.getElementById('loginScreen').style.display = 'flex';
-    document.getElementById('appScreen').style.display = 'none';
-    setTimeout(() => document.getElementById('loginPassword').focus(), 100);
-  }
-};
-
-function doLogin() {
-  const val = document.getElementById('loginPassword').value;
-  if (val === APP_PASSWORD) {
-    sessionStorage.setItem(SESSION_KEY, 'true');
-    document.getElementById('loginError').textContent = '';
-    startApp();
-  } else {
-    document.getElementById('loginError').textContent = '❌ Mot de passe incorrect';
-    document.getElementById('loginPassword').value = '';
-    document.getElementById('loginPassword').focus();
-  }
-}
-
-function doLogout() {
-  sessionStorage.removeItem(SESSION_KEY);
-  location.reload();
-}
-
-async function startApp() {
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('appScreen').style.display = 'block';
-
+window.onload = async function() {
   if (SUPABASE_URL !== 'VOTRE_URL_SUPABASE') {
     db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   }
-
   await loadData();
   renderAll();
-}
+};
 
 // ── SYNC ──
 function setSyncStatus(type, text) {
