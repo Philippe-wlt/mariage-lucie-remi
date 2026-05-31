@@ -1056,8 +1056,10 @@ function normName(s){
 }
 
 function parseOuiNon(v){
-  if(!v||v.trim()==='') return null;
-  return v.toLowerCase().includes('oui')?'oui':'non';
+  if(!v||v.trim()==='') return null;          // vide → ne pas modifier
+  if(v.toLowerCase().includes('oui')) return 'oui';
+  if(v.toLowerCase().includes('non')) return 'non';
+  return null;                                 // valeur non reconnue → ne pas modifier
 }
 function parseBool(v){
   if(!v||v.trim()==='') return null;
