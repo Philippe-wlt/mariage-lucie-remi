@@ -474,7 +474,7 @@ async function loadData() {
   setSyncStatus('syncing','⏳ Chargement…');
   try {
     const [{data:guests},{data:cats},{data:budgets},{data:depenses}] = await Promise.all([
-      db.from('guests').select('*').order('nom'),
+      db.from('guests').select('*'),
       db.from('categories').select('*').order('nom'),
       db.from('budget_lines').select('*').order('id'),
       db.from('depenses').select('*').order('id')
@@ -483,11 +483,25 @@ async function loadData() {
     if(cats&&cats.length) state.categories=cats.map(c=>c.nom);
     if(budgets&&budgets.length){state.budgetLines=budgets;state.budgetNextId=Math.max(...budgets.map(b=>b.id))+1;}
     if(depenses&&depenses.length){
-      // depenses stockées en JSON dans une seule ligne
       try{ const d=JSON.parse(depenses[0].data); if(d&&d.length) state.depenses=d; }catch(e){}
     }
     setSyncStatus('ok','✓ Synchronisé');
   } catch(e){ console.error(e); setSyncStatus('error','✗ Erreur connexion'); }
+}
+
+// Tri invités : Mariés en 1er, puis ordre des catégories, puis nom alphabétique
+function sortGuests(list){
+  const catOrder = c => {
+    const n = normName(c||'');
+    if(n.includes('mari')) return -1; // "Mariés", "Marié(s)"…
+    const idx = state.categories.findIndex(x=>normName(x)===n);
+    return idx===-1 ? 999 : idx;
+  };
+  return [...list].sort((a,b)=>{
+    const ca=catOrder(a.cat), cb=catOrder(b.cat);
+    if(ca!==cb) return ca-cb;
+    return (a.nom||'').localeCompare(b.nom||'','fr');
+  });
 }
 
 // ══ SAUVEGARDE INVITÉ ══
@@ -621,7 +635,7 @@ function rRT(t){
 }
 function renderGuestsTable(){
   const s=$('searchGuest')?.value||'',c=$('filterCat')?.value||'';
-  const list=state.guests.filter(g=>(!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c));
+  const list=sortGuests(state.guests.filter(g=>(!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c)));
   const cnt=$('guestCount');if(cnt)cnt.textContent=`${list.length} invité(s)`;
   const tb=$('guestsTbody');if(!tb)return;
   tb.innerHTML=list.map(g=>`<tr>
@@ -637,7 +651,7 @@ function renderGuestsTable(){
 }
 function renderCivilTable(){
   const s=$('searchCivil')?.value||'',c=$('filterCivilCat')?.value||'';
-  const list=state.guests.filter(g=>g.civil_inv==='oui'&&(!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c));
+  const list=sortGuests(state.guests.filter(g=>g.civil_inv==='oui'&&(!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c)));
   const tb=$('civilTbody');if(!tb)return;
   tb.innerHTML=list.map(g=>`<tr>
     <td><strong>${g.nom}</strong></td><td><span class="status-badge status-attente">${g.cat}</span></td>
@@ -651,10 +665,10 @@ function renderCivilTable(){
 }
 function renderReligTable(){
   const s=$('searchRelig')?.value||'',tf=$('filterReligType')?.value||'',c=$('filterReligCat')?.value||'';
-  const list=state.guests.filter(g=>g.relig_type!=='non'
+  const list=sortGuests(state.guests.filter(g=>g.relig_type!=='non'
     &&(!s||g.nom.toLowerCase().includes(s.toLowerCase()))
     &&(!tf||g.relig_type===tf)
-    &&(!c||g.cat===c));
+    &&(!c||g.cat===c)));
   const tb=$('religTbody');if(!tb)return;
   tb.innerHTML=list.map(g=>`<tr>
     <td><strong>${g.nom}</strong></td><td><span class="status-badge status-attente">${g.cat}</span></td>
@@ -709,6 +723,8 @@ function renderBudget(){
     <td><input style="border:none;background:transparent;font-family:'Jost',sans-serif;font-size:13px;width:200px;" value="${l.label}" onchange="updateBudgetLabel(${l.id},this.value)"></td>
     <td><input class="num-input" type="number" min="0" value="${l.amount}" onchange="updateBudgetAmount(${l.id},parseFloat(this.value)||0)"> €</td>
     <td><button class="btn btn-danger btn-sm" onclick="removeBudgetLine(${l.id})">✕</button></td></tr>`).join('');
+
+  // ── Tableau estimation par prestation ──
   let rows='',grand=0;
   state.budgetLines.forEach(l=>{
     const lb=l.label.toLowerCase();
@@ -716,12 +732,80 @@ function renderBudget(){
     const tot=qty*l.amount;grand+=tot;
     rows+=`<tr><td>${l.label}</td><td style="text-align:center;">${qty}</td><td style="text-align:right;">${l.amount} €</td><td style="text-align:right;font-weight:500;">${tot.toLocaleString('fr-FR')} €</td></tr>`;
   });
+
+  // ── Coût estimé par catégorie d'invités ──
+  const tarifVH=state.budgetLines.find(l=>l.label.toLowerCase().includes('vin')||l.label.toLowerCase().includes('honneur'))?.amount||0;
+  const tarifRA=state.budgetLines.find(l=>l.label.toLowerCase().includes('adulte'))?.amount||0;
+  const tarifRE=state.budgetLines.find(l=>l.label.toLowerCase().includes('enfant'))?.amount||0;
+
+  // Calcul par catégorie
+  const catMap={};
+  state.guests.forEach(g=>{
+    const c=g.cat||'Sans catégorie';
+    if(!catMap[c]) catMap[c]={invVH:0,invRepas:0,presVH:0,presA:0,presE:0};
+    // Invités
+    if(g.relig_type==='vh'||g.relig_type==='repas') catMap[c].invVH+=g.nb;
+    if(g.relig_type==='repas') catMap[c].invRepas+=g.nb;
+    // Présents confirmés
+    if(g.relig_rep_vh==='oui') catMap[c].presVH+=g.nb;
+    if(g.relig_rep_repas==='oui'){ catMap[c].presA+=(g.menus_adulte||0); catMap[c].presE+=(g.menus_enfant||0); }
+  });
+
+  let catRows='',catGrand=0;
+  // Tri : Mariés en 1er, puis ordre des catégories
+  const sortedCats=Object.keys(catMap).sort((a,b)=>{
+    const na=normName(a),nb2=normName(b);
+    if(na.includes('mari')) return -1;
+    if(nb2.includes('mari')) return 1;
+    const ia=state.categories.findIndex(x=>normName(x)===na);
+    const ib=state.categories.findIndex(x=>normName(x)===nb2);
+    return (ia===-1?999:ia)-(ib===-1?999:ib);
+  });
+  sortedCats.forEach(c=>{
+    const d=catMap[c];
+    const costMax=(d.invVH*tarifVH)+(d.invRepas*tarifRA);
+    const costConf=(d.presVH*tarifVH)+(d.presA*tarifRA)+(d.presE*tarifRE);
+    catGrand+=costMax;
+    catRows+=`<tr>
+      <td><strong>${c}</strong></td>
+      <td style="text-align:center;font-size:12px;">
+        ${d.invVH>0?`🥂 ${d.invVH} inv.`:''}${d.invVH>0&&d.invRepas>0?' · ':''}${d.invRepas>0?`🍽️ ${d.invRepas} inv.`:''}
+      </td>
+      <td style="text-align:center;font-size:12px;">
+        ${d.presVH>0?`🥂 ${d.presVH} conf.`:'–'}${d.presVH>0&&(d.presA+d.presE)>0?' · ':''}${(d.presA+d.presE)>0?`🍽️ ${d.presA+d.presE} conf.`:''}
+      </td>
+      <td style="text-align:right;color:var(--gold);">${costMax>0?costMax.toLocaleString('fr-FR')+' €':'–'}</td>
+      <td style="text-align:right;color:var(--green);font-weight:500;">${costConf>0?costConf.toLocaleString('fr-FR')+' €':'–'}</td>
+    </tr>`;
+  });
+
   const be=$('budgetEstimation');if(!be)return;
-  be.innerHTML=`<div class="table-wrap"><table><thead><tr><th>Prestation</th><th style="text-align:center;">Qté</th><th style="text-align:right;">P.U.</th><th style="text-align:right;">Total</th></tr></thead><tbody>${rows||'<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px;">Aucune donnée</td></tr>'}</tbody></table></div>
-  <div style="background:var(--dark);color:var(--gold-light);border-radius:10px;padding:20px 28px;margin-top:20px;display:flex;justify-content:space-between;align-items:center;">
-    <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px;">Total repas estimé</div><div style="font-size:12px;color:var(--muted);">Basé sur les confirmations</div></div>
-    <div style="font-family:'Cormorant Garamond',serif;font-size:36px;color:var(--gold);">${grand.toLocaleString('fr-FR')} €</div>
-  </div>`;
+  be.innerHTML=`
+    <div class="table-wrap" style="margin-bottom:20px;">
+      <table>
+        <thead><tr><th>Prestation</th><th style="text-align:center;">Qté confirmée</th><th style="text-align:right;">P.U.</th><th style="text-align:right;">Total</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px;">Aucune donnée</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div style="background:var(--dark);color:var(--gold-light);border-radius:10px;padding:20px 28px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;">
+      <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px;">Total repas estimé</div><div style="font-size:12px;color:var(--muted);">Basé sur les réponses confirmées</div></div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:36px;color:var(--gold);">${grand.toLocaleString('fr-FR')} €</div>
+    </div>
+    <div style="font-family:'Cormorant Garamond',serif;font-size:18px;color:var(--dark);margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--gold-pale);">
+      Coût estimé <em style="color:var(--gold);">par catégorie</em>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Catégorie</th>
+          <th style="text-align:center;">Invités</th>
+          <th style="text-align:center;">Confirmés</th>
+          <th style="text-align:right;color:#d4b483;">Coût max</th>
+          <th style="text-align:right;color:#a8d5b5;">Coût confirmé</th>
+        </tr></thead>
+        <tbody>${catRows||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px;">Aucun invité religieux</td></tr>'}</tbody>
+      </table>
+    </div>`;
 }
 async function addBudgetLine(){
   const line={id:state.budgetNextId++,label:'Nouvelle prestation',amount:0};
@@ -1012,12 +1096,13 @@ function handleMajImport(event){
   const file=event.target.files[0];if(!file)return;
   const reader=new FileReader();
   reader.onload=e=>{
-    const lines=e.target.result.split('\n').filter(l=>l.trim());
-    const headers=lines[0].split(/[;,]/).map(h=>h.trim().replace(/^\uFEFF/,''));
+    const lines=e.target.result.split(/\r?\n/).filter(l=>l.trim());
+    const headers=lines[0].split(/[;,]/).map(h=>h.trim().replace(/^\uFEFF/,'').replace(/[^\x20-\x7E\u00C0-\u024F]/g,''));
     majRows=lines.slice(1).map(line=>{
-      const cols=line.split(/[;,]/).map(c=>c.trim().replace(/^"|"$/g,''));
-      const obj={};headers.forEach((h,i)=>obj[h]=cols[i]||'');return obj;
-    }).filter(r=>r[headers[0]]);
+      // Découpe en respectant les guillemets éventuels
+      const cols=line.split(/[;,]/).map(c=>c.trim().replace(/^"|"$/g,'').replace(/^\s+|\s+$/g,''));
+      const obj={};headers.forEach((h,i)=>obj[h]=cols[i]!==undefined?cols[i]:'');return obj;
+    }).filter(r=>(r[headers[0]]||'').trim()!=='');
 
     // Aperçu
     $('importMajPreview').style.display='';
@@ -1028,14 +1113,13 @@ function handleMajImport(event){
     // Diagnostic : cherche chaque ligne avec nom + catégorie
     let found=0, notfound=[], ambiguous=[];
     majRows.forEach(r=>{
-      const nom=r['Nom']||r['nom']||'';
-      const cat=r['Catégorie']||r['categorie']||r['Categorie']||'';
+      const nom=(r['Nom']||r['nom']||'').trim();
+      const cat=(r['Catégorie']||r['categorie']||r['Categorie']||'').trim();
       if(!nom) return;
-
       const matches = findGuests(nom, cat);
       if(matches.length===1) found++;
       else if(matches.length===0) notfound.push(cat?`${nom} (${cat})`:nom);
-      else ambiguous.push(`${nom} — ${matches.length} correspondances (précisez la Catégorie)`);
+      else ambiguous.push(`${nom} — précisez la Catégorie`);
     });
 
     const stats=$('importMajStats');
@@ -1043,7 +1127,12 @@ function handleMajImport(event){
       let html=`<strong style="color:var(--green);">✓ ${found} invité(s) identifié(s) avec certitude</strong>`;
       if(ambiguous.length) html+=`<br><span style="color:var(--gold);">⚠️ ${ambiguous.length} doublon(s) de nom :</span><ul style="margin:4px 0 4px 16px;font-size:12px;">${ambiguous.map(a=>`<li>${a}</li>`).join('')}</ul>`;
       if(notfound.length) html+=`<br><span style="color:var(--red);">✗ ${notfound.length} introuvable(s) : ${notfound.slice(0,5).map(n=>`<em>${n}</em>`).join(', ')}${notfound.length>5?' …':''}</span>`;
-      html+=`<br><span style="color:var(--muted);font-size:12px;">Colonnes vides = données existantes conservées. Les invités ambigus ou introuvables seront ignorés.</span>`;
+      html+=`<br><br><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:10px 14px;background:var(--red-light);border-radius:6px;border:1px solid #e0b0b0;">
+        <input type="checkbox" id="chkResetReponses" style="width:16px;height:16px;accent-color:var(--red);">
+        <span><strong style="color:var(--red);">Remettre à zéro toutes les réponses avant l'import</strong><br>
+        <span style="font-size:11px;color:var(--muted);">Cochez si votre fichier contient l'ensemble des réponses connues à ce jour — efface d'abord toutes les réponses existantes, puis applique le fichier.</span></span>
+      </label>`;
+      html+=`<br><span style="color:var(--muted);font-size:12px;">Sans cette option : colonnes vides = données existantes conservées.</span>`;
       stats.innerHTML=html;
     }
   };
@@ -1068,29 +1157,45 @@ function parseBool(v){
 
 async function confirmMajImport(){
   if(!majRows.length) return;
+
+  const doReset = $('chkResetReponses')?.checked || false;
+
+  // Si option remise à zéro : efface toutes les réponses en base avant d'appliquer le fichier
+  if(doReset){
+    setSyncStatus('syncing','⏳ Remise à zéro…');
+    state.guests.forEach(g=>{
+      g.civil_rep=null; g.civil_repondu=false;
+      g.relig_remise=false; g.relig_repondu=false;
+      g.relig_rep_vh=null; g.relig_rep_repas=null;
+      g.menus_adulte=0; g.menus_enfant=0;
+    });
+    // Sauvegarde en masse
+    for(const g of state.guests) await dbSaveGuest(g);
+  }
+
   let updated=0, skipped=0, ambig=0;
 
   for(const r of majRows){
-    const nom=r['Nom']||r['nom']||'';
+    const nom=(r['Nom']||r['nom']||'').trim();
     if(!nom) continue;
-    const cat=r['Catégorie']||r['categorie']||r['Categorie']||'';
+    const cat=(r['Catégorie']||r['categorie']||r['Categorie']||'').trim();
     const matches=findGuests(nom,cat);
 
     if(matches.length===0){ skipped++; continue; }
-    if(matches.length>1){ ambig++; continue; } // doublon non résolu → ignoré
+    if(matches.length>1){ ambig++; continue; }
     const g=matches[0];
 
     const civilRep    = parseOuiNon(r['CivilReponse']);
     const religRemise = parseBool(r['ReligInvitationRemise']);
     const religRepVH  = parseOuiNon(r['ReligReponseVH']);
     const religRepRep = parseOuiNon(r['ReligReponseRepas']);
-    const menusA      = r['MenusAdulte']!==undefined&&r['MenusAdulte']!==''?parseInt(r['MenusAdulte'])||0:null;
-    const menusE      = r['MenusEnfant']!==undefined&&r['MenusEnfant']!==''?parseInt(r['MenusEnfant'])||0:null;
+    const menusA      = (r['MenusAdulte']||'').trim()!=='' ? parseInt(r['MenusAdulte'])||0 : null;
+    const menusE      = (r['MenusEnfant']||'').trim()!=='' ? parseInt(r['MenusEnfant'])||0 : null;
 
     if(civilRep    !== null){ g.civil_rep        = civilRep;    g.civil_repondu  = true; }
     if(religRemise !== null)  g.relig_remise      = religRemise;
-    if(religRepVH  !== null){ g.relig_rep_vh      = religRepVH;  g.relig_repondu = true; }
-    if(religRepRep !== null){ g.relig_rep_repas   = religRepRep; g.relig_repondu = true; }
+    if(religRepVH  !== null){ g.relig_rep_vh      = religRepVH;  g.relig_repondu  = true; }
+    if(religRepRep !== null){ g.relig_rep_repas   = religRepRep; g.relig_repondu  = true; }
     if(menusA      !== null)  g.menus_adulte      = menusA;
     if(menusE      !== null)  g.menus_enfant      = menusE;
 
@@ -1100,9 +1205,11 @@ async function confirmMajImport(){
 
   cancelMajImport();
   renderAll();
-  let msg=`✅ Mise à jour terminée !\n\n✓ ${updated} invité(s) mis à jour`;
+  let msg=`✅ Mise à jour terminée !`;
+  if(doReset) msg+=`\n↺ Réponses précédentes effacées avant import`;
+  msg+=`\n\n✓ ${updated} invité(s) mis à jour`;
   if(skipped) msg+=`\n✗ ${skipped} ligne(s) ignorée(s) (nom introuvable)`;
-  if(ambig)   msg+=`\n⚠️ ${ambig} ligne(s) ignorée(s) (doublon de nom sans catégorie — relancez l'import avec la colonne Catégorie renseignée)`;
+  if(ambig)   msg+=`\n⚠️ ${ambig} ligne(s) ignorée(s) (doublon — ajoutez la colonne Catégorie)`;
   alert(msg);
 }
 
