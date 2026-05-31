@@ -306,37 +306,84 @@
     <!-- ══ IMPORT ══ -->
     <div class="panel" id="panel-import">
       <div class="section-title">Import depuis <em>Excel</em></div>
-      <div class="section-sub">Importez votre liste depuis un fichier CSV</div>
-      <div class="card" style="max-width:700px;">
-        <div class="card-title">📥 Importer un fichier CSV</div>
-        <div class="notice">
-          <strong>Colonnes attendues :</strong><br><br>
-          <code style="background:rgba(0,0,0,0.06);padding:2px 6px;border-radius:3px;">Nom</code> &nbsp;
-          <code style="background:rgba(0,0,0,0.06);padding:2px 6px;border-radius:3px;">Catégorie</code> &nbsp;
-          <code style="background:rgba(0,0,0,0.06);padding:2px 6px;border-radius:3px;">NbPersonnes</code> &nbsp;
-          <code style="background:rgba(0,0,0,0.06);padding:2px 6px;border-radius:3px;">InvitéCivil</code> &nbsp;
-          <code style="background:rgba(0,0,0,0.06);padding:2px 6px;border-radius:3px;">InvitéReligieux</code><br><br>
-          <em>InvitéCivil</em> : <strong>oui</strong> ou <strong>non</strong> — <em>InvitéReligieux</em> : <strong>non</strong>, <strong>vh</strong> ou <strong>repas</strong>
-        </div>
-        <div class="import-zone" onclick="document.getElementById('fileInput').click()">
-          <div class="icon">📄</div>
-          <p><strong>Cliquez pour sélectionner</strong> votre fichier CSV</p>
-          <p style="margin-top:6px;font-size:12px;">Depuis Excel : Fichier → Enregistrer sous → CSV UTF-8</p>
-        </div>
-        <input type="file" id="fileInput" accept=".csv" onchange="handleFileImport(event)">
-        <div id="importPreview" style="display:none;">
-          <hr class="divider">
-          <div class="card-title" style="font-size:16px;">Aperçu (5 premières lignes)</div>
-          <div class="table-wrap"><table><thead><tr id="importPreviewHead"></tr></thead><tbody id="importPreviewBody"></tbody></table></div>
-          <div style="margin-top:16px;display:flex;gap:10px;">
-            <button class="btn btn-primary" onclick="confirmImport()">✦ Confirmer l'import</button>
-            <button class="btn btn-outline" onclick="cancelImport()">Annuler</button>
+      <div class="section-sub">Deux types d'import disponibles selon vos besoins</div>
+
+      <div class="two-col">
+
+        <!-- ─ Import liste invités ─ -->
+        <div class="card">
+          <div class="card-title">👥 Import — Nouvelle liste d'invités</div>
+          <div class="notice">
+            Utilisez cet import pour <strong>ajouter de nouveaux invités</strong> depuis votre fichier Excel initial.<br><br>
+            <strong>Colonnes obligatoires :</strong><br>
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">Nom</code> &nbsp;
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">Catégorie</code> &nbsp;
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">NbPersonnes</code> &nbsp;
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">InvitéCivil</code> &nbsp;
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">InvitéReligieux</code><br><br>
+            <em>InvitéCivil</em> : <strong>oui</strong> ou <strong>non</strong><br>
+            <em>InvitéReligieux</em> : <strong>non</strong>, <strong>vh</strong> ou <strong>repas</strong>
           </div>
+          <div class="import-zone" onclick="document.getElementById('fileInput').click()">
+            <div class="icon">📄</div>
+            <p><strong>Cliquez pour sélectionner</strong> le fichier CSV</p>
+            <p style="margin-top:6px;font-size:12px;">Excel → Enregistrer sous → CSV UTF-8</p>
+          </div>
+          <input type="file" id="fileInput" accept=".csv" onchange="handleFileImport(event)">
+          <div id="importPreview" style="display:none;">
+            <hr class="divider">
+            <div style="font-weight:500;margin-bottom:8px;font-size:14px;">Aperçu (5 premières lignes)</div>
+            <div class="table-wrap"><table><thead><tr id="importPreviewHead"></tr></thead><tbody id="importPreviewBody"></tbody></table></div>
+            <div style="margin-top:14px;display:flex;gap:10px;">
+              <button class="btn btn-primary" onclick="confirmImport()">✦ Confirmer l'import</button>
+              <button class="btn btn-outline" onclick="cancelImport()">Annuler</button>
+            </div>
+          </div>
+          <hr class="divider">
+          <div style="font-weight:500;margin-bottom:6px;font-size:14px;">📤 Télécharger le modèle</div>
+          <button class="btn btn-secondary btn-sm" onclick="downloadTemplate()">⬇️ Modèle CSV invités</button>
         </div>
-        <hr class="divider">
-        <div class="card-title" style="font-size:16px;">📤 Modèle à télécharger</div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Téléchargez ce modèle, remplissez dans Excel, enregistrez en CSV puis importez.</p>
-        <button class="btn btn-secondary" onclick="downloadTemplate()">⬇️ Télécharger le modèle CSV</button>
+
+        <!-- ─ Import mise à jour réponses ─ -->
+        <div class="card">
+          <div class="card-title">🔄 Import — Mise à jour des réponses</div>
+          <div class="notice">
+            Utilisez cet import pour <strong>mettre à jour les réponses et invitations remises</strong> d'invités déjà présents dans l'application.<br><br>
+            <strong>Colonne obligatoire :</strong><br>
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">Nom</code> — doit correspondre exactement au nom dans l'application<br><br>
+            <strong>Colonnes optionnelles</strong> (laissez vide = non modifié) :<br><br>
+            <span style="display:inline-block;background:var(--civil-light);color:var(--civil);padding:2px 6px;border-radius:4px;font-size:11px;font-weight:500;margin-bottom:4px;">CIVIL</span><br>
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">CivilReponse</code> : <strong>oui</strong> (présent) / <strong>non</strong> (absent)<br>
+            <em style="font-size:12px;color:var(--muted);">→ coche automatiquement "a répondu"</em><br><br>
+            <span style="display:inline-block;background:var(--relig-light);color:var(--relig);padding:2px 6px;border-radius:4px;font-size:11px;font-weight:500;margin-bottom:4px;">RELIGIEUX</span><br>
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">ReligInvitationRemise</code> : <strong>oui</strong> / <strong>non</strong><br>
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">ReligReponseVH</code> : <strong>oui</strong> / <strong>non</strong><br>
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">ReligReponseRepas</code> : <strong>oui</strong> / <strong>non</strong><br>
+            <em style="font-size:12px;color:var(--muted);">→ coche automatiquement "a répondu" dès qu'une réponse VH ou Repas est saisie</em><br><br>
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">MenusAdulte</code> : nombre &nbsp;
+            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">MenusEnfant</code> : nombre
+          </div>
+          <div class="import-zone" onclick="document.getElementById('fileInputMaj').click()">
+            <div class="icon">🔄</div>
+            <p><strong>Cliquez pour sélectionner</strong> le fichier CSV de mise à jour</p>
+            <p style="margin-top:6px;font-size:12px;">Excel → Enregistrer sous → CSV UTF-8</p>
+          </div>
+          <input type="file" id="fileInputMaj" accept=".csv" onchange="handleMajImport(event)">
+          <div id="importMajPreview" style="display:none;">
+            <hr class="divider">
+            <div style="font-weight:500;margin-bottom:8px;font-size:14px;">Aperçu (5 premières lignes)</div>
+            <div class="table-wrap"><table><thead><tr id="importMajPreviewHead"></tr></thead><tbody id="importMajPreviewBody"></tbody></table></div>
+            <div id="importMajStats" style="margin:12px 0;font-size:13px;color:var(--muted);"></div>
+            <div style="margin-top:14px;display:flex;gap:10px;">
+              <button class="btn btn-primary" onclick="confirmMajImport()">✦ Confirmer la mise à jour</button>
+              <button class="btn btn-outline" onclick="cancelMajImport()">Annuler</button>
+            </div>
+          </div>
+          <hr class="divider">
+          <div style="font-weight:500;margin-bottom:6px;font-size:14px;">📤 Télécharger le modèle</div>
+          <button class="btn btn-secondary btn-sm" onclick="downloadMajTemplate()">⬇️ Modèle CSV mise à jour</button>
+        </div>
+
       </div>
     </div>
 
@@ -931,6 +978,109 @@ function downloadTemplate(){
   const csv='Nom;Catégorie;NbPersonnes;InvitéCivil;InvitéReligieux\nDupont Jean;Famille proche;2;oui;repas\nMartin Sophie;Amis;1;non;vh\nBernard Paul;Collègues;1;oui;non\n';
   const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='modele-invites.csv';a.click();
+}
+
+// ══ IMPORT MISE À JOUR RÉPONSES ══
+let majRows=[];
+
+function handleMajImport(event){
+  const file=event.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const lines=e.target.result.split('\n').filter(l=>l.trim());
+    const headers=lines[0].split(/[;,]/).map(h=>h.trim().replace(/^\uFEFF/,''));
+    majRows=lines.slice(1).map(line=>{
+      const cols=line.split(/[;,]/).map(c=>c.trim().replace(/^"|"$/g,''));
+      const obj={};headers.forEach((h,i)=>obj[h]=cols[i]||'');return obj;
+    }).filter(r=>r[headers[0]]);
+
+    // Aperçu
+    $('importMajPreview').style.display='';
+    $('importMajPreviewHead').innerHTML=headers.map(h=>`<th>${h}</th>`).join('');
+    $('importMajPreviewBody').innerHTML=majRows.slice(0,5).map(r=>`<tr>${headers.map(h=>`<td>${r[h]||''}</td>`).join('')}</tr>`).join('');
+    if(majRows.length>5) $('importMajPreviewBody').innerHTML+=`<tr><td colspan="${headers.length}" style="text-align:center;color:var(--muted);padding:8px;">… et ${majRows.length-5} autres lignes</td></tr>`;
+
+    // Statistiques prévisionnelles
+    let found=0,notfound=[];
+    majRows.forEach(r=>{
+      const nom=r['Nom']||r['nom']||'';
+      const g=state.guests.find(x=>normName(x.nom)===normName(nom));
+      if(g) found++; else if(nom) notfound.push(nom);
+    });
+    const stats=$('importMajStats');
+    if(stats){
+      stats.innerHTML=`<strong style="color:var(--green);">✓ ${found} invité(s) reconnu(s)</strong> qui seront mis à jour.`
+        +(notfound.length>0?`<br><span style="color:var(--red);">⚠️ ${notfound.length} nom(s) non trouvé(s) : ${notfound.slice(0,5).map(n=>`<em>${n}</em>`).join(', ')}${notfound.length>5?' …':''}</span>`:'')
+        +`<br><span style="color:var(--muted);font-size:12px;">Les colonnes vides ne modifient pas les données existantes.</span>`;
+    }
+  };
+  reader.readAsText(file,'UTF-8');
+}
+
+// Normalise un nom pour la comparaison (minuscules, sans accents, espaces compressés)
+function normName(s){
+  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+}
+
+function parseOuiNon(v){
+  if(!v||v.trim()==='') return null;
+  return v.toLowerCase().includes('oui')?'oui':'non';
+}
+function parseBool(v){
+  if(!v||v.trim()==='') return null;
+  return v.toLowerCase().includes('oui');
+}
+
+async function confirmMajImport(){
+  if(!majRows.length) return;
+  let updated=0, skipped=0;
+
+  for(const r of majRows){
+    const nom=r['Nom']||r['nom']||'';
+    if(!nom) continue;
+    const g=state.guests.find(x=>normName(x.nom)===normName(nom));
+    if(!g){ skipped++; continue; }
+
+    // Civil
+    const civilRep    = parseOuiNon(r['CivilReponse']);
+    // Religieux
+    const religRemise = parseBool(r['ReligInvitationRemise']);
+    const religRepVH  = parseOuiNon(r['ReligReponseVH']);
+    const religRepRep = parseOuiNon(r['ReligReponseRepas']);
+    const menusA      = r['MenusAdulte']!==undefined&&r['MenusAdulte']!==''?parseInt(r['MenusAdulte'])||0:null;
+    const menusE      = r['MenusEnfant']!==undefined&&r['MenusEnfant']!==''?parseInt(r['MenusEnfant'])||0:null;
+
+    // Applique seulement les valeurs non-nulles
+    // Si une réponse est fournie → "a répondu" est automatiquement coché
+    if(civilRep    !== null){ g.civil_rep = civilRep; g.civil_repondu = true; }
+    if(religRemise !== null)  g.relig_remise    = religRemise;
+    if(religRepVH  !== null){ g.relig_rep_vh    = religRepVH;   g.relig_repondu = true; }
+    if(religRepRep !== null){ g.relig_rep_repas = religRepRep;  g.relig_repondu = true; }
+    if(menusA      !== null)  g.menus_adulte    = menusA;
+    if(menusE      !== null)  g.menus_enfant    = menusE;
+
+    await dbSaveGuest(g);
+    updated++;
+  }
+
+  cancelMajImport();
+  renderAll();
+  alert(`✅ Mise à jour terminée !\n\n✓ ${updated} invité(s) mis à jour${skipped>0?`\n⚠️ ${skipped} ligne(s) ignorée(s) (nom non trouvé)`:''}`);
+}
+
+function cancelMajImport(){
+  $('importMajPreview').style.display='none';
+  $('fileInputMaj').value='';
+  majRows=[];
+}
+
+function downloadMajTemplate(){
+  // Génère un CSV pré-rempli avec les noms des invités existants
+  const headers='Nom;CivilReponse;ReligInvitationRemise;ReligReponseVH;ReligReponseRepas;MenusAdulte;MenusEnfant';
+  const rows=state.guests.map(g=>`${g.nom};;;;;;`).join('\n');
+  const csv=headers+'\n'+rows+'\n';
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='maj-reponses.csv';a.click();
 }
 
 // ══ RENDER ALL ══
