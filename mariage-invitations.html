@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mariage de Lucie & Rémi</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --gold: #b8945a; --gold-light: #d4b483; --gold-pale: #f5ead8;
+    --cream: #faf7f2; --dark: #2c2416; --text: #3d3020; --muted: #8a7660;
+    --white: #ffffff; --civil: #4a7c9e; --civil-light: #e8f2f8;
+    --relig: #7a5c8a; --relig-light: #f0eaf4; --green: #4a7c5c;
+    --green-light: #e8f4ec; --red: #9e4a4a; --red-light: #f4e8e8;
+    --border: #e0d5c5; --shadow: 0 2px 20px rgba(44,36,22,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Jost', sans-serif; background: var(--cream); color: var(--text); min-height: 100vh; }
+
+  /* ── LOGIN ── */
+  #loginScreen {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; background: var(--dark);
+  }
+  .login-box {
+    background: var(--white); border-radius: 16px; padding: 48px 40px;
+    width: 360px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  .login-logo { font-family: 'Cormorant Garamond', serif; font-size: 36px; font-weight: 300; color: var(--dark); margin-bottom: 4px; }
+  .login-logo em { color: var(--gold); font-style: italic; }
+  .login-sub { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); margin-bottom: 32px; }
+  .login-field { width: 100%; padding: 13px 16px; border: 1px solid var(--border); border-radius: 8px; font-family: 'Jost', sans-serif; font-size: 15px; color: var(--text); text-align: center; letter-spacing: 3px; margin-bottom: 12px; transition: border 0.2s; }
+  .login-field:focus { outline: none; border-color: var(--gold); }
+  .btn-login { width: 100%; padding: 14px; background: var(--gold); color: white; border: none; border-radius: 8px; font-family: 'Jost', sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; letter-spacing: 1px; transition: background 0.2s; }
+  .btn-login:hover { background: var(--gold-light); }
+  .login-error { color: var(--red); font-size: 12px; margin-top: 10px; min-height: 18px; }
+  .login-note { font-size: 11px; color: var(--muted); margin-top: 18px; }
+  #configWarning { display:none; background:#fff3cd; border:1px solid #ffc107; border-radius:8px; padding:14px; margin-bottom:18px; font-size:12px; color:#856404; text-align:left; line-height:1.6; }
+  #configWarning code { background:rgba(0,0,0,0.08); padding:1px 5px; border-radius:3px; }
+
+  /* ── APP ── */
+  #appScreen { display: none; }
+  .header { background: var(--dark); padding: 20px 40px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 30px rgba(0,0,0,0.3); }
+  .header-title { color: var(--gold-light); font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 300; letter-spacing: 2px; }
+  .header-title span { color: var(--gold); font-style: italic; }
+  .header-subtitle { color: var(--muted); font-size: 11px; letter-spacing: 3px; text-transform: uppercase; margin-top: 3px; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .sync-indicator { font-size: 11px; padding: 3px 10px; border-radius: 20px; background: var(--green-light); color: var(--green); white-space:nowrap; }
+  .sync-indicator.syncing { background: #fff3cd; color: #856404; }
+  .sync-indicator.error { background: var(--red-light); color: var(--red); }
+  nav { background: var(--white); border-bottom: 1px solid var(--border); display: flex; padding: 0 40px; overflow-x: auto; }
+  .nav-btn { padding: 16px 22px; font-family: 'Jost', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; }
+  .nav-btn:hover { color: var(--gold); }
+  .nav-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
+  .main { padding: 32px 40px; max-width: 1400px; margin: 0 auto; }
+  .panel { display: none; } .panel.active { display: block; }
+  .section-title { font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 300; color: var(--dark); margin-bottom: 6px; }
+  .section-title em { color: var(--gold); font-style: italic; }
+  .section-sub { color: var(--muted); font-size: 13px; letter-spacing: 1px; margin-bottom: 28px; }
+  .card { background: var(--white); border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow); padding: 24px 28px; margin-bottom: 24px; }
+  .card-title { font-family: 'Cormorant Garamond', serif; font-size: 20px; font-weight: 500; color: var(--dark); margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+  .btn { padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; font-family: 'Jost', sans-serif; font-size: 13px; font-weight: 500; letter-spacing: 0.5px; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-primary { background: var(--gold); color: var(--white); } .btn-primary:hover { background: var(--gold-light); }
+  .btn-secondary { background: var(--gold-pale); color: var(--gold); border: 1px solid var(--gold-light); } .btn-secondary:hover { background: var(--gold-light); color: var(--white); }
+  .btn-danger { background: var(--red-light); color: var(--red); border: 1px solid #e0b0b0; } .btn-danger:hover { background: var(--red); color: white; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--muted); } .btn-outline:hover { border-color: var(--gold); color: var(--gold); }
+  .btn-lock { background: transparent; border: 1px solid #555; color: #aaa; font-size: 12px; padding: 6px 14px; } .btn-lock:hover { border-color: var(--red); color: var(--red); }
+  .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead { background: var(--dark); }
+  thead th { padding: 12px 14px; color: var(--gold-light); font-weight: 500; letter-spacing: 0.8px; font-size: 11px; text-transform: uppercase; text-align: left; white-space: nowrap; }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; } tbody tr:last-child { border-bottom: none; } tbody tr:hover { background: var(--gold-pale); }
+  tbody td { padding: 11px 14px; vertical-align: middle; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); font-weight: 500; }
+  .form-group input, .form-group select { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-family: 'Jost', sans-serif; font-size: 13px; color: var(--text); background: var(--white); transition: border 0.2s; }
+  .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--gold); }
+  select.cell-select { border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font-size: 12px; font-family: 'Jost', sans-serif; background: var(--white); color: var(--text); cursor: pointer; }
+  select.cell-select:focus { outline: none; border-color: var(--gold); }
+  .check-cell { text-align: center; } input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--gold); cursor: pointer; }
+  .status-badge { display: inline-block; padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .status-oui { background: var(--green-light); color: var(--green); } .status-non { background: var(--red-light); color: var(--red); }
+  .status-attente { background: #f5f0e8; color: var(--muted); } .status-vh { background: var(--relig-light); color: var(--relig); } .status-repas { background: #e8f0f4; color: var(--civil); }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: var(--white); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-align: center; box-shadow: var(--shadow); }
+  .stat-num { font-family: 'Cormorant Garamond', serif; font-size: 42px; font-weight: 300; color: var(--gold); line-height: 1; margin-bottom: 6px; }
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+  .import-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 32px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 20px; }
+  .import-zone:hover { border-color: var(--gold); background: var(--gold-pale); }
+  .import-zone .icon { font-size: 36px; margin-bottom: 10px; }
+  .import-zone p { color: var(--muted); font-size: 13px; }
+  #fileInput { display: none; }
+  .budget-total { background: var(--dark); color: var(--gold-light); border-radius: 10px; padding: 20px 28px; margin-top: 20px; display: flex; justify-content: space-between; align-items: center; }
+  .budget-total .amount { font-family: 'Cormorant Garamond', serif; font-size: 36px; color: var(--gold); }
+  .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+  .filter-bar input[type="text"] { padding: 8px 14px; border: 1px solid var(--border); border-radius: 6px; font-family: 'Jost', sans-serif; font-size: 13px; width: 220px; }
+  .filter-bar input[type="text"]:focus { outline: none; border-color: var(--gold); }
+  .filter-bar select { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-family: 'Jost', sans-serif; font-size: 13px; color: var(--text); }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(44,36,22,0.5); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--white); border-radius: 14px; padding: 32px; max-width: 600px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+  .modal-title { font-family: 'Cormorant Garamond', serif; font-size: 24px; font-weight: 400; color: var(--dark); margin-bottom: 20px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+  .pill-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .pill-tab { padding: 8px 18px; border-radius: 20px; border: 1px solid var(--border); background: var(--white); font-size: 12px; font-weight: 500; letter-spacing: 0.5px; cursor: pointer; color: var(--muted); transition: all 0.2s; }
+  .pill-tab.active { background: var(--gold); color: white; border-color: var(--gold); }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .notice { background: var(--gold-pale); border-left: 3px solid var(--gold); padding: 12px 16px; border-radius: 0 6px 6px 0; font-size: 13px; color: var(--text); margin-bottom: 16px; }
+  .list-people { list-style: none; }
+  .list-people li { padding: 8px 14px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; font-size: 13px; }
+  .list-people li:last-child { border-bottom: none; }
+  .list-people li .cat { color: var(--muted); font-size: 12px; }
+  .num-input { width: 70px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 13px; font-family: 'Jost', sans-serif; }
+  .num-input:focus { outline: none; border-color: var(--gold); }
+  @media (max-width: 700px) { .main { padding: 20px 16px; } .header { padding: 16px; } nav { padding: 0 10px; } .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN ── -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div id="configWarning"></div>
+    <div class="login-logo">✦ Lucie <em>&</em> Rémi</div>
+    <div class="login-sub">Gestion des invitations</div>
+    <input class="login-field" type="password" id="loginPassword" placeholder="Mot de passe" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn-login" onclick="doLogin()">Accéder →</button>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-note">Accès réservé à la famille</div>
+  </div>
+</div>
+
+<!-- ── APP ── -->
+<div id="appScreen">
+  <div class="header">
+    <div>
+      <div class="header-title">✦ Mariage de <span>Lucie & Rémi</span></div>
+      <div class="header-subtitle">Gestion des invitations & budget</div>
+    </div>
+    <div class="header-right">
+      <span id="syncStatus" class="sync-indicator">✓ Synchronisé</span>
+      <button class="btn btn-lock btn-sm" onclick="doLogout()">🔒 Verrouiller</button>
+    </div>
+  </div>
+
+  <nav>
+    <button class="nav-btn active" onclick="showPanel('synthese',this)">📊 Synthèse</button>
+    <button class="nav-btn" onclick="showPanel('invites',this)">👥 Invités</button>
+    <button class="nav-btn" onclick="showPanel('civil',this)">⚖️ Civil</button>
+    <button class="nav-btn" onclick="showPanel('religieux',this)">⛪ Religieux</button>
+    <button class="nav-btn" onclick="showPanel('budget',this)">💰 Budget</button>
+    <button class="nav-btn" onclick="showPanel('categories',this)">🏷️ Catégories</button>
+    <button class="nav-btn" onclick="showPanel('import',this)">📥 Import Excel</button>
+  </nav>
+
+  <div class="main">
+
+    <!-- SYNTHÈSE -->
+    <div class="panel active" id="panel-synthese">
+      <div class="section-title">Vue d'ensemble <em>& synthèse</em></div>
+      <div class="section-sub">Récapitulatif en temps réel</div>
+      <div class="pill-tabs">
+        <button class="pill-tab active" onclick="switchSynthTab('chiffres',this)">Chiffres clés</button>
+        <button class="pill-tab" onclick="switchSynthTab('listes',this)">Listes détaillées</button>
+        <button class="pill-tab" onclick="switchSynthTab('nonrepondu',this)">Sans réponse</button>
+      </div>
+      <div id="synth-chiffres">
+        <div id="statsCivil" class="summary-grid"></div>
+        <div id="statsVH" class="summary-grid" style="margin-top:8px;"></div>
+        <div id="statsRepas" class="summary-grid" style="margin-top:8px;"></div>
+      </div>
+      <div id="synth-listes" style="display:none;" class="two-col">
+        <div class="card"><div class="card-title">🥂 Présents au Vin d'Honneur</div><ul class="list-people" id="listVH"></ul></div>
+        <div class="card"><div class="card-title">🍽️ Présents au Repas</div><ul class="list-people" id="listRepas"></ul></div>
+      </div>
+      <div id="synth-nonrepondu" style="display:none;" class="two-col">
+        <div class="card"><div class="card-title">⏳ Sans réponse — Vin d'Honneur</div><ul class="list-people" id="listNRVH"></ul></div>
+        <div class="card"><div class="card-title">⏳ Sans réponse — Repas</div><ul class="list-people" id="listNRRepas"></ul></div>
+      </div>
+    </div>
+
+    <!-- INVITÉS -->
+    <div class="panel" id="panel-invites">
+      <div class="section-title">Liste des <em>invités</em></div>
+      <div class="section-sub">Gérez tous vos invités depuis cette page</div>
+      <div class="card">
+        <div class="card-title">➕ Ajouter un invité</div>
+        <div class="form-grid">
+          <div class="form-group"><label>Nom & Prénom</label><input type="text" id="g_nom" placeholder="Dupont Marie"></div>
+          <div class="form-group"><label>Catégorie</label><select id="g_cat"></select></div>
+          <div class="form-group"><label>Nb de personnes</label><input type="number" id="g_nb" value="1" min="1"></div>
+          <div class="form-group"><label>Invité au Civil ?</label><select id="g_civil_inv"><option value="oui">Oui</option><option value="non">Non</option></select></div>
+          <div class="form-group"><label>Invité au Religieux ?</label><select id="g_relig_type"><option value="non">Non</option><option value="vh">Vin d'honneur seul</option><option value="repas">VH + Repas</option></select></div>
+        </div>
+        <div style="margin-top:16px;"><button class="btn btn-primary" onclick="addGuest()">✦ Ajouter l'invité</button></div>
+      </div>
+      <div class="card">
+        <div class="filter-bar">
+          <input type="text" id="searchGuest" placeholder="🔍 Rechercher…" oninput="renderGuestsTable()">
+          <select id="filterCat" onchange="renderGuestsTable()"><option value="">Toutes catégories</option></select>
+          <span id="guestCount" style="color:var(--muted);font-size:13px;margin-left:auto;"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nom</th><th>Catégorie</th><th>Nb pers.</th><th>Invité Civil</th><th>Invité Religieux</th><th>Actions</th></tr></thead>
+            <tbody id="guestsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- CIVIL -->
+    <div class="panel" id="panel-civil">
+      <div class="section-title">Mariage <em>Civil</em></div>
+      <div class="section-sub">Suivi des invitations et réponses pour la cérémonie civile</div>
+      <div class="card">
+        <div class="filter-bar">
+          <input type="text" id="searchCivil" placeholder="🔍 Rechercher…" oninput="renderCivilTable()">
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nom</th><th>Catégorie</th><th>Nb pers.</th><th>Invité</th><th>A répondu</th><th>Réponse</th></tr></thead>
+            <tbody id="civilTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- RELIGIEUX -->
+    <div class="panel" id="panel-religieux">
+      <div class="section-title">Mariage <em>Religieux</em></div>
+      <div class="section-sub">Suivi complet : vin d'honneur, repas, remise d'invitation, menus</div>
+      <div class="card">
+        <div class="filter-bar">
+          <input type="text" id="searchRelig" placeholder="🔍 Rechercher…" oninput="renderReligTable()">
+          <select id="filterReligType" onchange="renderReligTable()">
+            <option value="">Tous</option>
+            <option value="vh">Vin d'honneur seul</option>
+            <option value="repas">VH + Repas</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nom</th><th>Catégorie</th><th>Nb pers.</th><th>Type invitation</th><th>Invitation remise</th><th>A répondu</th><th>Réponse VH</th><th>Réponse Repas</th><th>Menus enfants</th><th>Menus adultes</th></tr></thead>
+            <tbody id="religTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- BUDGET -->
+    <div class="panel" id="panel-budget">
+      <div class="section-title">Suivi <em>Budgétaire</em></div>
+      <div class="section-sub">Budget prévisionnel basé sur les confirmations</div>
+      <div class="two-col">
+        <div>
+          <div class="card">
+            <div class="card-title">📋 Grille tarifaire</div>
+            <div class="notice">Définissez le coût par personne pour chaque prestation.</div>
+            <div class="table-wrap">
+              <table><thead><tr><th>Prestation</th><th>Budget / pers. (€)</th><th></th></tr></thead><tbody id="budgetLinesTbody"></tbody></table>
+            </div>
+            <button class="btn btn-secondary" style="margin-top:14px;" onclick="addBudgetLine()">➕ Ajouter une ligne</button>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <div class="card-title">📊 Estimation totale</div>
+            <div id="budgetEstimation"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CATEGORIES -->
+    <div class="panel" id="panel-categories">
+      <div class="section-title">Gestion des <em>catégories</em></div>
+      <div class="section-sub">Personnalisez les catégories d'invités</div>
+      <div class="card" style="max-width:500px;">
+        <div class="card-title">Catégories actuelles</div>
+        <ul id="catList" style="list-style:none;margin-bottom:16px;"></ul>
+        <hr class="divider">
+        <div style="display:flex;gap:10px;align-items:flex-end;">
+          <div class="form-group" style="flex:1;"><label>Nouvelle catégorie</label><input type="text" id="newCatInput" placeholder="ex: Amis du lycée"></div>
+          <button class="btn btn-primary" onclick="addCategory()">Ajouter</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- IMPORT -->
+    <div class="panel" id="panel-import">
+      <div class="section-title">Import depuis <em>Excel</em></div>
+      <div class="section-sub">Importez votre liste depuis un fichier CSV</div>
+      <div class="card" style="max-width:700px;">
+        <div class="card-title">📥 Importer un fichier CSV</div>
+        <div class="notice">
+          <strong>Colonnes attendues (dans cet ordre) :</strong><br><br>
+          <code style="background:rgba(0,0,0,0.06);padding:2px 6px;border-radius:3px;">Nom</code> &nbsp;
+          <code style="background:rgba(0,0,0,0.06);padding:2px 6px;border-radius:3px;">Catégorie</code> &nbsp;
+          <code style="background:rgba(0,0,0,0.06);padding:2px 6px;border-radius:3px;">NbPersonnes</code> &nbsp;
+          <code style="background:rgba(0,0,0,0.06);padding:2px 6px;border-radius:3px;">InvitéCivil</code> &nbsp;
+          <code style="background:rgba(0,0,0,0.06);padding:2px 6px;border-radius:3px;">InvitéReligieux</code><br><br>
+          <em>InvitéCivil</em> : <strong>oui</strong> ou <strong>non</strong><br>
+          <em>InvitéReligieux</em> : <strong>non</strong>, <strong>vh</strong> (vin d'honneur seul) ou <strong>repas</strong> (VH + repas)
+        </div>
+        <div class="import-zone" onclick="document.getElementById('fileInput').click()">
+          <div class="icon">📄</div>
+          <p><strong>Cliquez pour sélectionner</strong> votre fichier CSV</p>
+          <p style="margin-top:6px;font-size:12px;">Depuis Excel : Fichier → Enregistrer sous → CSV UTF-8</p>
+        </div>
+        <input type="file" id="fileInput" accept=".csv" onchange="handleFileImport(event)">
+        <div id="importPreview" style="display:none;">
+          <hr class="divider">
+          <div class="card-title" style="font-size:16px;">Aperçu (5 premières lignes)</div>
+          <div class="table-wrap"><table><thead><tr id="importPreviewHead"></tr></thead><tbody id="importPreviewBody"></tbody></table></div>
+          <div style="margin-top:16px;display:flex;gap:10px;">
+            <button class="btn btn-primary" onclick="confirmImport()">✦ Confirmer l'import</button>
+            <button class="btn btn-outline" onclick="cancelImport()">Annuler</button>
+          </div>
+        </div>
+        <hr class="divider">
+        <div class="card-title" style="font-size:16px;">📤 Modèle à télécharger</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Téléchargez ce modèle, remplissez-le dans Excel, enregistrez en CSV, puis importez-le ici.</p>
+        <button class="btn btn-secondary" onclick="downloadTemplate()">⬇️ Télécharger le modèle CSV</button>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /appScreen -->
+
+<!-- MODAL EDIT GUEST -->
+<div class="modal-overlay" id="modalGuest">
+  <div class="modal">
+    <div class="modal-title">✏️ Modifier l'invité</div>
+    <input type="hidden" id="editId">
+    <div class="form-grid">
+      <div class="form-group"><label>Nom & Prénom</label><input type="text" id="edit_nom"></div>
+      <div class="form-group"><label>Catégorie</label><select id="edit_cat"></select></div>
+      <div class="form-group"><label>Nb de personnes</label><input type="number" id="edit_nb" min="1"></div>
+      <div class="form-group"><label>Invité au Civil</label><select id="edit_civil_inv"><option value="oui">Oui</option><option value="non">Non</option></select></div>
+      <div class="form-group"><label>Type Religieux</label><select id="edit_relig_type"><option value="non">Non invité</option><option value="vh">Vin d'honneur seul</option><option value="repas">VH + Repas</option></select></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modalGuest')">Annuler</button>
+      <button class="btn btn-primary" onclick="saveEditGuest()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  ⚙️  CONFIGURATION — À MODIFIER AVANT UTILISATION
+// ============================================================
+const SUPABASE_URL = 'VOTRE_URL_SUPABASE';    // ex: https://abcxyz.supabase.co
+const SUPABASE_KEY = 'VOTRE_CLE_PUBLIQUE';    // clé "anon/public" dans Supabase > Settings > API
+
+// Mot de passe pour accéder à l'application
+// Choisissez un mot de passe et remplacez la valeur ci-dessous
+const APP_PASSWORD = 'VOTRE_MOT_DE_PASSE';   // ex: 'Lucie2025!'
+// ============================================================
+
+const SESSION_KEY = 'mariage_auth_ok';
+let db = null;
+
+// ── INIT ──
+window.onload = function() {
+  const configured = SUPABASE_URL !== 'VOTRE_URL_SUPABASE';
+  const authed = sessionStorage.getItem(SESSION_KEY) === 'true';
+
+  if (!configured) {
+    document.getElementById('configWarning').innerHTML =
+      '⚠️ <strong>Configuration requise</strong> — Ouvrez le fichier avec un éditeur de texte et remplacez <code>VOTRE_URL_SUPABASE</code>, <code>VOTRE_CLE_PUBLIQUE</code> et <code>VOTRE_MOT_DE_PASSE</code> par vos vraies valeurs (voir le guide).';
+    document.getElementById('configWarning').style.display = 'block';
+  }
+
+  if (authed && configured) {
+    startApp();
+  } else {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('appScreen').style.display = 'none';
+    setTimeout(() => document.getElementById('loginPassword').focus(), 100);
+  }
+};
+
+function doLogin() {
+  const val = document.getElementById('loginPassword').value;
+  if (val === APP_PASSWORD) {
+    sessionStorage.setItem(SESSION_KEY, 'true');
+    document.getElementById('loginError').textContent = '';
+    startApp();
+  } else {
+    document.getElementById('loginError').textContent = '❌ Mot de passe incorrect';
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('loginPassword').focus();
+  }
+}
+
+function doLogout() {
+  sessionStorage.removeItem(SESSION_KEY);
+  location.reload();
+}
+
+async function startApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'block';
+
+  if (SUPABASE_URL !== 'VOTRE_URL_SUPABASE') {
+    db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  }
+
+  await loadData();
+  renderAll();
+}
+
+// ── SYNC ──
+function setSyncStatus(type, text) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'sync-indicator' + (type === 'syncing' ? ' syncing' : type === 'error' ? ' error' : '');
+}
+
+async function loadData() {
+  if (!db) return;
+  setSyncStatus('syncing', '⏳ Chargement…');
+  try {
+    const [{ data: guests }, { data: cats }, { data: budgets }] = await Promise.all([
+      db.from('guests').select('*').order('nom'),
+      db.from('categories').select('*').order('nom'),
+      db.from('budget_lines').select('*').order('id')
+    ]);
+    if (guests && guests.length) {
+      state.guests = guests;
+      state.guestNextId = Math.max(...guests.map(g => g.id)) + 1;
+    }
+    if (cats && cats.length) state.categories = cats.map(c => c.nom);
+    if (budgets && budgets.length) {
+      state.budgetLines = budgets;
+      state.budgetNextId = Math.max(...budgets.map(b => b.id)) + 1;
+    }
+    setSyncStatus('ok', '✓ Synchronisé');
+  } catch(e) {
+    console.error(e);
+    setSyncStatus('error', '✗ Erreur de connexion');
+  }
+}
+
+async function dbSaveGuest(g) {
+  if (!db) return;
+  setSyncStatus('syncing', '⏳ Sauvegarde…');
+  try {
+    const { error } = await db.from('guests').upsert(g, { onConflict: 'id' });
+    if (error) throw error;
+    setSyncStatus('ok', '✓ Synchronisé');
+  } catch(e) { console.error(e); setSyncStatus('error', '✗ Erreur sync'); }
+}
+
+async function dbDeleteGuest(id) {
+  if (!db) return;
+  try {
+    const { error } = await db.from('guests').delete().eq('id', id);
+    if (error) throw error;
+    setSyncStatus('ok', '✓ Synchronisé');
+  } catch(e) { console.error(e); setSyncStatus('error', '✗ Erreur sync'); }
+}
+
+async function dbSaveCategories() {
+  if (!db) return;
+  try {
+    await db.from('categories').delete().neq('nom', '___');
+    await db.from('categories').insert(state.categories.map(nom => ({ nom })));
+  } catch(e) { console.error(e); }
+}
+
+async function dbSaveBudgetLine(line) {
+  if (!db) return;
+  try { await db.from('budget_lines').upsert(line, { onConflict: 'id' }); } catch(e) { console.error(e); }
+}
+
+async function dbDeleteBudgetLine(id) {
+  if (!db) return;
+  try { await db.from('budget_lines').delete().eq('id', id); } catch(e) { console.error(e); }
+}
+
+// ── STATE ──
+let state = {
+  guests: [],
+  categories: ['Famille proche','Famille éloignée','Amis','Collègues','Voisins','Autres'],
+  budgetLines: [
+    { id: 1, label: 'Vin d\'honneur', amount: 35 },
+    { id: 2, label: 'Repas adulte', amount: 90 },
+    { id: 3, label: 'Repas enfant', amount: 40 }
+  ],
+  budgetNextId: 4,
+  guestNextId: 1
+};
+
+const $ = id => document.getElementById(id);
+
+// ── NAVIGATION ──
+function showPanel(name, el) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  $('panel-'+name).classList.add('active');
+  if (el) el.classList.add('active');
+  renderAll();
+}
+
+function switchSynthTab(name, el) {
+  ['chiffres','listes','nonrepondu'].forEach(t => { const x=$('synth-'+t); if(x) x.style.display='none'; });
+  const t=$('synth-'+name); if(t) t.style.display='';
+  document.querySelectorAll('.pill-tab').forEach(b => b.classList.remove('active'));
+  if(el) el.classList.add('active');
+  renderSynthese();
+}
+
+// ── CATEGORIES ──
+function renderCategories() {
+  const ul=$('catList'); if(!ul) return;
+  ul.innerHTML = state.categories.map((c,i) => `
+    <li style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+      <span style="font-size:14px;">${c}</span>
+      <button class="btn btn-danger btn-sm" onclick="removeCategory(${i})">✕</button>
+    </li>`).join('');
+  const opts = state.categories.map(c=>`<option value="${c}">${c}</option>`).join('');
+  ['g_cat','edit_cat'].forEach(id=>{ const el=$(id); if(el) el.innerHTML=opts; });
+  const fc=$('filterCat'); if(fc) fc.innerHTML='<option value="">Toutes catégories</option>'+opts;
+}
+
+async function addCategory() {
+  const v=$('newCatInput').value.trim();
+  if(!v||state.categories.includes(v)) return;
+  state.categories.push(v); $('newCatInput').value='';
+  await dbSaveCategories(); renderCategories();
+}
+
+async function removeCategory(i) {
+  if(!confirm(`Supprimer "${state.categories[i]}" ?`)) return;
+  state.categories.splice(i,1);
+  await dbSaveCategories(); renderCategories();
+}
+
+// ── GUESTS ──
+function makeGuest(nom, cat, nb, civil_inv, relig_type) {
+  return { id: state.guestNextId++, nom, cat, nb: parseInt(nb)||1,
+    civil_inv, civil_rep: null, civil_repondu: false,
+    relig_type, relig_remise: false, relig_repondu: false,
+    relig_rep_vh: null, relig_rep_repas: null, menus_enfant: 0, menus_adulte: 0 };
+}
+
+async function addGuest() {
+  const nom=$('g_nom').value.trim();
+  if(!nom) return alert('Veuillez saisir un nom.');
+  const g=makeGuest(nom, $('g_cat').value, $('g_nb').value, $('g_civil_inv').value, $('g_relig_type').value);
+  state.guests.push(g); await dbSaveGuest(g);
+  $('g_nom').value=''; $('g_nb').value=1; renderAll();
+}
+
+async function removeGuest(id) {
+  if(!confirm('Supprimer cet invité ?')) return;
+  state.guests=state.guests.filter(g=>g.id!==id);
+  await dbDeleteGuest(id); renderAll();
+}
+
+function openEditGuest(id) {
+  const g=state.guests.find(x=>x.id===id); if(!g) return;
+  $('editId').value=id; $('edit_nom').value=g.nom; $('edit_nb').value=g.nb;
+  $('edit_civil_inv').value=g.civil_inv; $('edit_relig_type').value=g.relig_type;
+  renderCategories(); $('edit_cat').value=g.cat;
+  $('modalGuest').classList.add('open');
+}
+
+async function saveEditGuest() {
+  const id=parseInt($('editId').value);
+  const g=state.guests.find(x=>x.id===id); if(!g) return;
+  g.nom=$('edit_nom').value.trim(); g.cat=$('edit_cat').value;
+  g.nb=parseInt($('edit_nb').value)||1;
+  g.civil_inv=$('edit_civil_inv').value; g.relig_type=$('edit_relig_type').value;
+  closeModal('modalGuest'); await dbSaveGuest(g); renderAll();
+}
+
+function closeModal(id) { $(id).classList.remove('open'); }
+
+async function updateGuest(id, field, val) {
+  const g=state.guests.find(x=>x.id===id); if(!g) return;
+  g[field]=val; await dbSaveGuest(g); renderSynthese();
+}
+
+// ── RENDER TABLES ──
+function rReligType(t) {
+  if(t==='vh') return '<span class="status-badge status-vh">🥂 VH seul</span>';
+  if(t==='repas') return '<span class="status-badge status-repas">🍽️ VH + Repas</span>';
+  return '<span class="status-badge status-attente">–</span>';
+}
+
+function renderGuestsTable() {
+  const s=$('searchGuest')?.value||'', c=$('filterCat')?.value||'';
+  const list=state.guests.filter(g=>(!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c));
+  const cnt=$('guestCount'); if(cnt) cnt.textContent=`${list.length} invité(s)`;
+  const tb=$('guestsTbody'); if(!tb) return;
+  tb.innerHTML=list.map(g=>`<tr>
+    <td><strong>${g.nom}</strong></td>
+    <td><span class="status-badge status-attente">${g.cat}</span></td>
+    <td style="text-align:center;">${g.nb}</td>
+    <td>${g.civil_inv==='oui'?'<span class="status-badge status-oui">✓ Oui</span>':'<span class="status-badge status-non">✕ Non</span>'}</td>
+    <td>${rReligType(g.relig_type)}</td>
+    <td style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="btn btn-secondary btn-sm" onclick="openEditGuest(${g.id})">✏️</button>
+      <button class="btn btn-danger btn-sm" onclick="removeGuest(${g.id})">🗑️</button>
+    </td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité</td></tr>';
+}
+
+function renderCivilTable() {
+  const s=$('searchCivil')?.value||'';
+  const list=state.guests.filter(g=>g.civil_inv==='oui'&&(!s||g.nom.toLowerCase().includes(s.toLowerCase())));
+  const tb=$('civilTbody'); if(!tb) return;
+  tb.innerHTML=list.map(g=>`<tr>
+    <td><strong>${g.nom}</strong></td><td><span class="status-badge status-attente">${g.cat}</span></td>
+    <td style="text-align:center;">${g.nb}</td><td><span class="status-badge status-oui">✓ Invité</span></td>
+    <td class="check-cell"><input type="checkbox" ${g.civil_repondu?'checked':''} onchange="updateGuest(${g.id},'civil_repondu',this.checked)"></td>
+    <td><select class="cell-select" onchange="updateGuest(${g.id},'civil_rep',this.value||null)">
+      <option value="" ${!g.civil_rep?'selected':''}>— Attente —</option>
+      <option value="oui" ${g.civil_rep==='oui'?'selected':''}>✓ Présent</option>
+      <option value="non" ${g.civil_rep==='non'?'selected':''}>✕ Absent</option>
+    </select></td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité civil</td></tr>';
+}
+
+function renderReligTable() {
+  const s=$('searchRelig')?.value||'', tf=$('filterReligType')?.value||'';
+  const list=state.guests.filter(g=>g.relig_type!=='non'&&(!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!tf||g.relig_type===tf));
+  const tb=$('religTbody'); if(!tb) return;
+  tb.innerHTML=list.map(g=>`<tr>
+    <td><strong>${g.nom}</strong></td><td><span class="status-badge status-attente">${g.cat}</span></td>
+    <td style="text-align:center;">${g.nb}</td><td>${rReligType(g.relig_type)}</td>
+    <td class="check-cell"><input type="checkbox" ${g.relig_remise?'checked':''} onchange="updateGuest(${g.id},'relig_remise',this.checked)"></td>
+    <td class="check-cell"><input type="checkbox" ${g.relig_repondu?'checked':''} onchange="updateGuest(${g.id},'relig_repondu',this.checked)"></td>
+    <td><select class="cell-select" onchange="updateGuest(${g.id},'relig_rep_vh',this.value||null)">
+      <option value="" ${!g.relig_rep_vh?'selected':''}>—</option>
+      <option value="oui" ${g.relig_rep_vh==='oui'?'selected':''}>✓ Présent</option>
+      <option value="non" ${g.relig_rep_vh==='non'?'selected':''}>✕ Absent</option>
+    </select></td>
+    <td>${g.relig_type==='repas'?`<select class="cell-select" onchange="updateGuest(${g.id},'relig_rep_repas',this.value||null)">
+      <option value="" ${!g.relig_rep_repas?'selected':''}>—</option>
+      <option value="oui" ${g.relig_rep_repas==='oui'?'selected':''}>✓ Présent</option>
+      <option value="non" ${g.relig_rep_repas==='non'?'selected':''}>✕ Absent</option>
+    </select>`:'<span style="color:var(--muted)">–</span>'}</td>
+    <td>${g.relig_type==='repas'?`<input class="num-input" type="number" min="0" value="${g.menus_enfant||0}" onchange="updateGuest(${g.id},'menus_enfant',parseInt(this.value)||0)">`:'–'}</td>
+    <td>${g.relig_type==='repas'?`<input class="num-input" type="number" min="0" value="${g.menus_adulte||0}" onchange="updateGuest(${g.id},'menus_adulte',parseInt(this.value)||0)">`:'–'}</td>
+    </tr>`).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité religieux</td></tr>';
+}
+
+// ── SYNTHÈSE ──
+function renderSynthese() {
+  const gs=state.guests;
+  const cI=gs.filter(g=>g.civil_inv==='oui'), cO=cI.filter(g=>g.civil_rep==='oui'), cN=cI.filter(g=>g.civil_rep==='non'), cA=cI.filter(g=>!g.civil_rep);
+  const vI=gs.filter(g=>g.relig_type==='vh'||g.relig_type==='repas'), vO=vI.filter(g=>g.relig_rep_vh==='oui'), vN=vI.filter(g=>g.relig_rep_vh==='non'), vA=vI.filter(g=>!g.relig_rep_vh);
+  const rI=gs.filter(g=>g.relig_type==='repas'), rO=rI.filter(g=>g.relig_rep_repas==='oui'), rN=rI.filter(g=>g.relig_rep_repas==='non'), rA=rI.filter(g=>!g.relig_rep_repas);
+  const nb=arr=>arr.reduce((s,g)=>s+g.nb,0);
+
+  const sc=$('statsCivil'); if(sc) sc.innerHTML=`<div style="grid-column:1/-1;font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--civil);margin-bottom:4px;">⚖️ Mariage Civil</div>${sCard(nb(cI),'Invités')}${sCard(nb(cO),'Présents','o')}${sCard(nb(cN),'Absents','n')}${sCard(nb(cA),'Sans réponse','a')}`;
+  const sv=$('statsVH'); if(sv) sv.innerHTML=`<div style="grid-column:1/-1;font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--relig);margin-bottom:4px;">🥂 Vin d'Honneur</div>${sCard(nb(vI),'Invités')}${sCard(nb(vO),'Présents','o')}${sCard(nb(vN),'Absents','n')}${sCard(nb(vA),'Sans réponse','a')}`;
+  const sr=$('statsRepas'); if(sr) sr.innerHTML=`<div style="grid-column:1/-1;font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--civil);margin-bottom:4px;">🍽️ Repas</div>${sCard(nb(rI),'Invités')}${sCard(nb(rO),'Présents','o')}${sCard(nb(rN),'Absents','n')}${sCard(nb(rA),'Sans réponse','a')}`;
+
+  const li=g=>`<li><span>${g.nom}</span><span class="cat">${g.cat} · ${g.nb} p.</span></li>`;
+  const empty='<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun</li>';
+  const ok='<li style="color:var(--green);padding:8px 14px;font-size:13px;">✓ Tous ont répondu</li>';
+  const lVH=$('listVH'); if(lVH) lVH.innerHTML=vO.map(li).join('')||empty;
+  const lR=$('listRepas'); if(lR) lR.innerHTML=rO.map(li).join('')||empty;
+  const lNV=$('listNRVH'); if(lNV) lNV.innerHTML=vA.map(li).join('')||ok;
+  const lNR=$('listNRRepas'); if(lNR) lNR.innerHTML=rA.map(li).join('')||ok;
+}
+
+function sCard(n, label, t='') {
+  const c=t==='o'?'var(--green)':t==='n'?'var(--red)':'var(--gold)';
+  return `<div class="stat-card"><div class="stat-num" style="color:${c}">${n}</div><div class="stat-label">${label}</div></div>`;
+}
+
+// ── BUDGET ──
+function renderBudget() {
+  const vhP=state.guests.filter(g=>g.relig_rep_vh==='oui').reduce((s,g)=>s+g.nb,0);
+  const rA=state.guests.filter(g=>g.relig_rep_repas==='oui').reduce((s,g)=>s+(g.menus_adulte||0),0);
+  const rE=state.guests.filter(g=>g.relig_rep_repas==='oui').reduce((s,g)=>s+(g.menus_enfant||0),0);
+  const tb=$('budgetLinesTbody'); if(!tb) return;
+  tb.innerHTML=state.budgetLines.map(l=>`<tr>
+    <td><input style="border:none;background:transparent;font-family:'Jost',sans-serif;font-size:13px;width:200px;" value="${l.label}" onchange="updateBudgetLabel(${l.id},this.value)"></td>
+    <td><input class="num-input" type="number" min="0" value="${l.amount}" onchange="updateBudgetAmount(${l.id},parseFloat(this.value)||0)"> €</td>
+    <td><button class="btn btn-danger btn-sm" onclick="removeBudgetLine(${l.id})">✕</button></td></tr>`).join('');
+  let rows='',grand=0;
+  state.budgetLines.forEach(l=>{
+    const lb=l.label.toLowerCase();
+    let qty=lb.includes('vin')||lb.includes('honneur')?vhP:lb.includes('enfant')?rE:lb.includes('adulte')||lb.includes('repas')?rA:0;
+    const tot=qty*l.amount; grand+=tot;
+    rows+=`<tr><td>${l.label}</td><td style="text-align:center;">${qty}</td><td style="text-align:right;">${l.amount} €</td><td style="text-align:right;font-weight:500;">${tot.toLocaleString('fr-FR')} €</td></tr>`;
+  });
+  const be=$('budgetEstimation'); if(!be) return;
+  be.innerHTML=`<div class="table-wrap"><table><thead><tr><th>Prestation</th><th style="text-align:center;">Qté</th><th style="text-align:right;">P.U.</th><th style="text-align:right;">Total</th></tr></thead><tbody>${rows||'<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px;">Aucune donnée</td></tr>'}</tbody></table></div>
+  <div class="budget-total"><div><div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px;">Total estimé</div><div style="font-size:12px;color:var(--muted);">Basé sur les confirmations</div></div><div class="amount">${grand.toLocaleString('fr-FR')} €</div></div>`;
+}
+
+async function addBudgetLine() {
+  const line={id:state.budgetNextId++, label:'Nouvelle prestation', amount:0};
+  state.budgetLines.push(line); await dbSaveBudgetLine(line); renderBudget();
+}
+async function removeBudgetLine(id) {
+  state.budgetLines=state.budgetLines.filter(l=>l.id!==id);
+  await dbDeleteBudgetLine(id); renderBudget();
+}
+async function updateBudgetLabel(id,val) {
+  const l=state.budgetLines.find(x=>x.id===id); if(l){l.label=val;await dbSaveBudgetLine(l);}
+}
+async function updateBudgetAmount(id,val) {
+  const l=state.budgetLines.find(x=>x.id===id); if(l){l.amount=val;await dbSaveBudgetLine(l);renderBudget();}
+}
+
+// ── IMPORT ──
+let importedRows=[];
+function handleFileImport(event) {
+  const file=event.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const lines=e.target.result.split('\n').filter(l=>l.trim());
+    const headers=lines[0].split(/[;,]/).map(h=>h.trim().replace(/^\uFEFF/,''));
+    importedRows=lines.slice(1).map(line=>{
+      const cols=line.split(/[;,]/).map(c=>c.trim().replace(/^"|"$/g,''));
+      const obj={}; headers.forEach((h,i)=>obj[h]=cols[i]||''); return obj;
+    }).filter(r=>r[headers[0]]);
+    $('importPreview').style.display='';
+    $('importPreviewHead').innerHTML=headers.map(h=>`<th>${h}</th>`).join('');
+    $('importPreviewBody').innerHTML=importedRows.slice(0,5).map(r=>`<tr>${headers.map(h=>`<td>${r[h]||''}</td>`).join('')}</tr>`).join('');
+    if(importedRows.length>5) $('importPreviewBody').innerHTML+=`<tr><td colspan="${headers.length}" style="text-align:center;color:var(--muted);padding:8px;">… et ${importedRows.length-5} autres lignes</td></tr>`;
+  };
+  reader.readAsText(file,'UTF-8');
+}
+
+async function confirmImport() {
+  if(!importedRows.length) return;
+  let added=0;
+  for(const r of importedRows){
+    const nom=r['Nom']||r['nom']||r['NOM']||Object.values(r)[0]; if(!nom) continue;
+    const cat=r['Catégorie']||r['categorie']||r['Categorie']||'';
+    if(cat&&!state.categories.includes(cat)) state.categories.push(cat);
+    const g=makeGuest(nom.trim(), cat||state.categories[0]||'Autres',
+      parseInt(r['NbPersonnes']||r['Nb']||1)||1,
+      (r['InvitéCivil']||r['Civil']||'non').toLowerCase().includes('oui')?'oui':'non',
+      parseRT(r['InvitéReligieux']||r['Religieux']||'non'));
+    state.guests.push(g); await dbSaveGuest(g); added++;
+  }
+  await dbSaveCategories(); renderAll();
+  $('importPreview').style.display='none'; $('fileInput').value=''; importedRows=[];
+  alert(`✅ ${added} invité(s) importé(s) avec succès !`);
+}
+
+function parseRT(v){
+  if(!v) return 'non';
+  const lv=v.toLowerCase().trim();
+  if(lv.includes('repas')) return 'repas';
+  if(lv==='vh'||lv.includes('vh')||lv.includes('honneur')) return 'vh';
+  return 'non';
+}
+function cancelImport(){ $('importPreview').style.display='none'; $('fileInput').value=''; importedRows=[]; }
+
+function downloadTemplate(){
+  const csv='Nom;Catégorie;NbPersonnes;InvitéCivil;InvitéReligieux\nDupont Jean;Famille proche;2;oui;repas\nMartin Sophie;Amis;1;non;vh\nBernard Paul;Collègues;1;oui;non\n';
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='modele-invites.csv'; a.click();
+}
+
+function renderAll(){
+  renderCategories(); renderGuestsTable(); renderCivilTable(); renderReligTable(); renderSynthese(); renderBudget();
+}
+</script>
+</body>
+</html>
