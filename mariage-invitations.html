@@ -163,6 +163,7 @@
         <button class="pill-tab" onclick="switchSynthTab('civil',this)">⚖️ Civil — listes</button>
         <button class="pill-tab" onclick="switchSynthTab('listes',this)">⛪ Religieux — présents</button>
         <button class="pill-tab" onclick="switchSynthTab('nonrepondu',this)">⛪ Religieux — sans réponse</button>
+        <button class="pill-tab" onclick="switchSynthTab('absents',this)">✕ Absents</button>
       </div>
 
       <!-- Chiffres clés -->
@@ -205,6 +206,27 @@
         <div class="two-col">
           <div class="card"><div class="card-title">⏳ Sans réponse — Vin d'Honneur</div><ul class="list-people" id="listNRVH"></ul></div>
           <div class="card"><div class="card-title">⏳ Sans réponse — Repas</div><ul class="list-people" id="listNRRepas"></ul></div>
+        </div>
+      </div>
+
+      <!-- Absents civil et religieux -->
+      <div id="synth-absents" style="display:none;">
+        <div class="filter-bar" style="margin-bottom:16px;">
+          <input type="text" id="synthSearchAbs" placeholder="🔍 Rechercher un nom…" oninput="renderSynthese()" style="width:220px;">
+          <select id="synthFilterCatAbs" onchange="renderSynthese()"><option value="">Toutes catégories</option></select>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="card-title">✕ Absents au mariage civil</div>
+            <ul class="list-people" id="listCivilAbs"></ul>
+          </div>
+          <div class="card">
+            <div class="card-title">✕ Absents au religieux</div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 14px 4px;">🥂 Vin d'honneur</div>
+            <ul class="list-people" id="listVHAbs"></ul>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:12px 14px 4px;border-top:1px solid var(--border);">🍽️ Repas</div>
+            <ul class="list-people" id="listRepasAbs"></ul>
+          </div>
         </div>
       </div>
     </div>
@@ -796,9 +818,9 @@ function showPanel(name, el) {
   renderAll();
 }
 
-// Active un onglet interne dans la synthèse (chiffres / civil / listes / nonrepondu)
+// Active un onglet interne dans la synthèse (chiffres / civil / listes / nonrepondu / absents)
 function switchSynthTab(name,el){
-  ['chiffres','civil','listes','nonrepondu'].forEach(t=>{const x=$('synth-'+t);if(x)x.style.display='none';});
+  ['chiffres','civil','listes','nonrepondu','absents'].forEach(t=>{const x=$('synth-'+t);if(x)x.style.display='none';});
   const t=$('synth-'+name);if(t)t.style.display='';
   document.querySelectorAll('.pill-tab').forEach(b=>b.classList.remove('active'));
   if(el)el.classList.add('active');
@@ -1092,7 +1114,7 @@ function renderSynthese(){
 
   // ── Popule les selects catégorie des filtres (seulement si vides) ──
   const opts='<option value="">Toutes catégories</option>'+state.categories.map(c=>`<option value="${c}">${c}</option>`).join('');
-  ['synthFilterCat','synthFilterCatNR','synthFilterCatCivil'].forEach(id=>{
+  ['synthFilterCat','synthFilterCatNR','synthFilterCatCivil','synthFilterCatAbs'].forEach(id=>{
     const el=$(id);
     if(el&&el.innerHTML==='<option value="">Toutes catégories</option>') el.innerHTML=opts;
   });
@@ -1118,6 +1140,12 @@ function renderSynthese(){
   const s2=$('synthSearchNR')?.value||'', c2=$('synthFilterCatNR')?.value||'';
   const lNV=$('listNRVH');    if(lNV) lNV.innerHTML  = sortGuests(vA.filter(g=>match(g,s2,c2))).map(li).join('')||(s2||c2?empty:allOk);
   const lNR=$('listNRRepas'); if(lNR) lNR.innerHTML  = sortGuests(rA.filter(g=>match(g,s2,c2))).map(li).join('')||(s2||c2?empty:allOk);
+
+  // ── Onglet Absents ──
+  const sa=$('synthSearchAbs')?.value||'', ca=$('synthFilterCatAbs')?.value||'';
+  const lCA=$('listCivilAbs'); if(lCA) lCA.innerHTML = sortGuests(cN.filter(g=>match(g,sa,ca))).map(li).join('')||'<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun absent confirmé</li>';
+  const lVA=$('listVHAbs');    if(lVA) lVA.innerHTML = sortGuests(vN.filter(g=>match(g,sa,ca))).map(li).join('')||'<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun</li>';
+  const lRA=$('listRepasAbs'); if(lRA) lRA.innerHTML = sortGuests(rN.filter(g=>match(g,sa,ca))).map(li).join('')||'<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun</li>';
 }
 
 // Génère une carte statistique (nombre + libellé + couleur selon le type)
