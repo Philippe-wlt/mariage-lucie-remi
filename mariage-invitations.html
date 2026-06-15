@@ -2878,7 +2878,7 @@ function renderSynthese(){
 
   // Popule les selects catégorie
   const opts='<option value="">Toutes catégories</option>'+state.categories.map(c=>`<option value="${c}">${c}</option>`).join('');
-  ['synthFilterCat','synthFilterCatNR','synthFilterCatCivil'].forEach(id=>{
+  ['synthFilterCat','synthFilterCatNR','synthFilterCatCivil','synthFilterCatAbs'].forEach(id=>{
     const el=$(id);
     if(el&&el.innerHTML==='<option value="">Toutes catégories</option>') el.innerHTML=opts;
   });
@@ -2902,6 +2902,12 @@ function renderSynthese(){
   const s2=$('synthSearchNR')?.value||'', c2=$('synthFilterCatNR')?.value||'';
   const lNV=$('listNRVH');    if(lNV)  lNV.innerHTML  = sortGuests(vA.filter(g=>match(g,s2,c2))).map(li).join('')||(s2||c2?empty:allOk);
   const lNR=$('listNRRepas'); if(lNR)  lNR.innerHTML  = sortGuests(rA.filter(g=>match(g,s2,c2))).map(li).join('')||(s2||c2?empty:allOk);
+
+  // ── Absents ──
+  const sa=$('synthSearchAbs')?.value||'', ca=$('synthFilterCatAbs')?.value||'';
+  const lCA=$('listCivilAbs'); if(lCA) lCA.innerHTML = sortGuests(cN.filter(g=>match(g,sa,ca))).map(li).join('')||'<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun absent confirmé</li>';
+  const lVA=$('listVHAbs');    if(lVA) lVA.innerHTML = sortGuests(vN.filter(g=>match(g,sa,ca))).map(li).join('')||'<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun</li>';
+  const lRA=$('listRepasAbs'); if(lRA) lRA.innerHTML = sortGuests(rN.filter(g=>match(g,sa,ca))).map(li).join('')||'<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun</li>';
 }
 function sC(n,label,t=''){
   const c=t==='o'?'var(--green)':t==='n'?'var(--red)':'var(--gold)';
