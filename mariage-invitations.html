@@ -104,7 +104,6 @@
   .repas-bloc-title{font-family:'Cormorant Garamond',serif;font-size:18px;color:var(--dark);margin-bottom:12px;}
   .repas-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;}
   @media(max-width:700px){.repas-detail-grid{grid-template-columns:1fr;}.main{padding:20px 16px;}.header{padding:16px;}nav{padding:0 10px;}.two-col,.three-col{grid-template-columns:1fr;}}
-
   /* ── Sauvegardes ── */
   .backup-row{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);gap:12px;flex-wrap:wrap;}
   .backup-row:last-child{border-bottom:none;}
@@ -163,7 +162,6 @@
         <button class="pill-tab" onclick="switchSynthTab('civil',this)">⚖️ Civil — listes</button>
         <button class="pill-tab" onclick="switchSynthTab('listes',this)">⛪ Religieux — présents</button>
         <button class="pill-tab" onclick="switchSynthTab('nonrepondu',this)">⛪ Religieux — sans réponse</button>
-        <button class="pill-tab" onclick="switchSynthTab('absents',this)">✕ Absents</button>
       </div>
 
       <!-- Chiffres clés -->
@@ -206,27 +204,6 @@
         <div class="two-col">
           <div class="card"><div class="card-title">⏳ Sans réponse — Vin d'Honneur</div><ul class="list-people" id="listNRVH"></ul></div>
           <div class="card"><div class="card-title">⏳ Sans réponse — Repas</div><ul class="list-people" id="listNRRepas"></ul></div>
-        </div>
-      </div>
-
-      <!-- Absents civil et religieux -->
-      <div id="synth-absents" style="display:none;">
-        <div class="filter-bar" style="margin-bottom:16px;">
-          <input type="text" id="synthSearchAbs" placeholder="🔍 Rechercher un nom…" oninput="renderSynthese()" style="width:220px;">
-          <select id="synthFilterCatAbs" onchange="renderSynthese()"><option value="">Toutes catégories</option></select>
-        </div>
-        <div class="two-col">
-          <div class="card">
-            <div class="card-title">✕ Absents au mariage civil</div>
-            <ul class="list-people" id="listCivilAbs"></ul>
-          </div>
-          <div class="card">
-            <div class="card-title">✕ Absents au religieux</div>
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 14px 4px;">🥂 Vin d'honneur</div>
-            <ul class="list-people" id="listVHAbs"></ul>
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:12px 14px 4px;border-top:1px solid var(--border);">🍽️ Repas</div>
-            <ul class="list-people" id="listRepasAbs"></ul>
-          </div>
         </div>
       </div>
     </div>
@@ -613,1979 +590,6 @@
 </div>
 
 <script>
-// ╔══════════════════════════════════════════════════════════════════╗
-// ║              APPLICATION — MARIAGE DE LUCIE & RÉMI              ║
-// ║                                                                  ║
-// ║  Architecture :                                                  ║
-// ║  1. CONFIGURATION         — URL et clé Supabase                 ║
-// ║  2. ÉTAT LOCAL (state)    — Données en mémoire dans le navigateur║
-// ║  3. INITIALISATION        — Démarrage de l'app                  ║
-// ║  4. SYNCHRONISATION       — Lecture / écriture Supabase         ║
-// ║  5. NAVIGATION            — Changement de panneaux              ║
-// ║  6. CATÉGORIES INVITÉS    — CRUD des catégories                 ║
-// ║  7. INVITÉS               — CRUD des invités                    ║
-// ║  8. AFFICHAGE TABLEAUX    — Rendu HTML des listes               ║
-// ║  9. SYNTHÈSE              — Compteurs et listes filtrées        ║
-// ║  10. BUDGET REPAS         — Tarifs et estimation par catégorie  ║
-// ║  11. DÉPENSES             — Gestion des postes de dépenses      ║
-// ║  12. IMPORT — LISTE       — Ajout d'invités depuis CSV          ║
-// ║  13. IMPORT — RÉPONSES    — Mise à jour des réponses depuis CSV ║
-// ║  14. EXPORT               — Téléchargement CSV vers Excel       ║
-// ║  15. UTILITAIRES          — Fonctions partagées                 ║
-// ║  16. RENDER ALL           — Rafraîchissement global             ║
-// ╚══════════════════════════════════════════════════════════════════╝
-
-
-// ════════════════════════════════════════════════════════
-// 1. CONFIGURATION SUPABASE
-//    Remplacez ces valeurs si vous changez de projet.
-//    SUPABASE_URL  : URL de votre projet (Settings > API)
-//    SUPABASE_KEY  : Clé publique "anon" (Settings > API)
-// ════════════════════════════════════════════════════════
-const SUPABASE_URL = 'https://pbjrkxnctfvwvuynsyzf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBianJreG5jdGZ2d3Z1eW5zeXpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyMjU2NTMsImV4cCI6MjA5NTgwMTY1M30.2KXVLHgQIfs-jCU4WsQb6sYRX1DEn_k1Y_QvmdOkb1M';
-
-let db = null;          // Client Supabase, initialisé au démarrage
-const $ = id => document.getElementById(id);  // Raccourci getElementById
-
-
-// ════════════════════════════════════════════════════════
-// 2. ÉTAT LOCAL (state)
-//    Toutes les données de l'application sont stockées ici
-//    pendant la session. Chaque modification est aussitôt
-//    sauvegardée en base via les fonctions dbSave*.
-//
-//    Structure d'un invité :
-//      id            : UUID unique (anti-doublon multi-utilisateurs)
-//      nom           : Nom et prénom
-//      cat           : Catégorie d'invité
-//      nb            : Nombre de personnes dans le groupe
-//      civil_inv     : Invité au civil ? (oui/non)
-//      civil_rep     : Réponse civil (oui/non/null)
-//      civil_repondu : A-t-il répondu ? (boolean)
-//      relig_type    : Type invitation religieux (non/vh/repas)
-//      relig_remise  : Invitation physique remise ? (boolean)
-//      relig_repondu : A-t-il répondu au religieux ? (boolean)
-//      relig_rep_vh  : Réponse vin d'honneur (oui/non/null)
-//      relig_rep_repas: Réponse repas (oui/non/null)
-//      menus_adulte  : Nb menus adulte commandés
-//      menus_enfant  : Nb menus enfant commandés
-// ════════════════════════════════════════════════════════
-let state = {
-  guests: [],
-  categories: ['Famille proche','Famille éloignée','Amis','Collègues','Voisins','Autres'],
-  budgetLines: [
-    {id:1, label:"Vin d'honneur", amount:35},
-    {id:2, label:'Repas adulte',  amount:90},
-    {id:3, label:'Repas enfant',  amount:40}
-  ],
-  budgetNextId: 4,
-  // Dépenses : tableau de catégories, chacune avec ses sous-catégories
-  // Stocké en JSON dans une seule ligne Supabase (table depenses, id=1)
-  depenses: [
-    {id:1, nom:'Mariage civil', sousCategories:[
-      {id:101,nom:'Repas',montant:0},{id:102,nom:'Location de la salle',montant:0},{id:103,nom:'DJ',montant:0}
-    ]},
-    {id:2, nom:'Soirée', sousCategories:[
-      {id:201,nom:'DJ',montant:0},{id:202,nom:'Location de la salle',montant:0}
-    ]},
-    {id:3, nom:'Tenue et beauté', sousCategories:[
-      {id:301,nom:'Robe de mariée',montant:0}
-    ]},
-    {id:4, nom:'Fleuriste', sousCategories:[
-      {id:401,nom:'Cérémonie',montant:0},{id:402,nom:'Salle',montant:0}
-    ]},
-    {id:5, nom:'Papeterie', sousCategories:[
-      {id:501,nom:'Faire-parts',montant:0},{id:502,nom:'Timbres',montant:0}
-    ]}
-  ],
-  depNextCatId: 6,
-  depNextSubId: 600
-};
-
-
-// ════════════════════════════════════════════════════════
-// 3. INITIALISATION
-//    Appelée au chargement de la page.
-//    Crée le client Supabase, charge les données, lance l'affichage.
-// ════════════════════════════════════════════════════════
-window.onload = async function() {
-  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  await loadData();
-  renderAll();
-  initBackupPreferences(); // Restaure les préférences de sauvegarde auto
-};
-
-
-// ════════════════════════════════════════════════════════
-// 4. SYNCHRONISATION SUPABASE
-//    Toutes les opérations de lecture/écriture en base.
-//    L'indicateur de sync en haut à droite reflète l'état.
-// ════════════════════════════════════════════════════════
-
-// Affiche l'état de synchronisation dans l'en-tête
-function setSyncStatus(type, text) {
-  const el=$('syncStatus'); if(!el) return;
-  el.textContent=text;
-  el.className='sync-indicator'+(type==='syncing'?' syncing':type==='error'?' error':'');
-}
-
-// Charge toutes les données depuis Supabase en une seule fois (requêtes parallèles)
-async function loadData() {
-  setSyncStatus('syncing','⏳ Chargement…');
-  try {
-    const [{data:guests},{data:cats},{data:budgets},{data:depenses}] = await Promise.all([
-      db.from('guests').select('*'),
-      db.from('categories').select('*').order('nom'),
-      db.from('budget_lines').select('*').order('id'),
-      db.from('depenses').select('*').order('id')
-    ]);
-    if(guests&&guests.length) state.guests=guests;
-    if(cats&&cats.length) state.categories=cats.map(c=>c.nom);
-    if(budgets&&budgets.length){
-      state.budgetLines=budgets;
-      state.budgetNextId=Math.max(...budgets.map(b=>b.id))+1;
-    }
-    if(depenses&&depenses.length){
-      // Les dépenses sont stockées sous forme d'un seul objet JSON dans le champ "data"
-      try{ const d=JSON.parse(depenses[0].data); if(d&&d.length) state.depenses=d; }catch(e){}
-    }
-    setSyncStatus('ok','✓ Synchronisé');
-  } catch(e){ console.error(e); setSyncStatus('error','✗ Erreur connexion'); }
-}
-
-// Sauvegarde ou met à jour un invité (upsert = insert ou update selon si l'id existe)
-async function dbSaveGuest(g) {
-  setSyncStatus('syncing','⏳ Sauvegarde…');
-  try{
-    const{error}=await db.from('guests').upsert(g,{onConflict:'id'});
-    if(error) throw error;
-    setSyncStatus('ok','✓ Synchronisé');
-  }catch(e){console.error(e);setSyncStatus('error','✗ Erreur sync');}
-}
-
-// Supprime un invité par son id
-async function dbDeleteGuest(id) {
-  try{
-    const{error}=await db.from('guests').delete().eq('id',id);
-    if(error) throw error;
-    setSyncStatus('ok','✓ Synchronisé');
-  }catch(e){console.error(e);setSyncStatus('error','✗ Erreur sync');}
-}
-
-// Remplace toute la liste des catégories d'invités (suppression puis réinsertion)
-async function dbSaveCategories() {
-  try{
-    await db.from('categories').delete().neq('nom','___');
-    await db.from('categories').insert(state.categories.map(nom=>({nom})));
-  }catch(e){console.error(e);}
-}
-
-// Sauvegarde ou met à jour une ligne de budget repas
-async function dbSaveBudgetLine(line) {
-  try{await db.from('budget_lines').upsert(line,{onConflict:'id'});}catch(e){console.error(e);}
-}
-
-// Supprime une ligne de budget repas
-async function dbDeleteBudgetLine(id) {
-  try{await db.from('budget_lines').delete().eq('id',id);}catch(e){console.error(e);}
-}
-
-// Sauvegarde tout le bloc dépenses en JSON dans une seule ligne (id=1)
-// Ce choix permet de gérer librement la structure imbriquée catégories/sous-catégories
-// sans avoir besoin de tables supplémentaires dans Supabase.
-async function dbSaveDepenses() {
-  setSyncStatus('syncing','⏳ Sauvegarde…');
-  try{
-    await db.from('depenses').upsert({id:1,data:JSON.stringify(state.depenses)},{onConflict:'id'});
-    setSyncStatus('ok','✓ Synchronisé');
-  }catch(e){console.error(e);setSyncStatus('error','✗ Erreur sync');}
-}
-
-
-// ════════════════════════════════════════════════════════
-// 5. NAVIGATION
-//    Gère le changement de panneau principal (nav du haut)
-//    et les onglets internes de la synthèse.
-// ════════════════════════════════════════════════════════
-
-// Active un panneau principal et son bouton de navigation
-function showPanel(name, el) {
-  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  $('panel-'+name).classList.add('active');
-  if(el) el.classList.add('active');
-  renderAll();
-}
-
-// Active un onglet interne dans la synthèse (chiffres / civil / listes / nonrepondu / absents)
-function switchSynthTab(name,el){
-  ['chiffres','civil','listes','nonrepondu','absents'].forEach(t=>{const x=$('synth-'+t);if(x)x.style.display='none';});
-  const t=$('synth-'+name);if(t)t.style.display='';
-  document.querySelectorAll('.pill-tab').forEach(b=>b.classList.remove('active'));
-  if(el)el.classList.add('active');
-  renderSynthese();
-}
-
-
-// ════════════════════════════════════════════════════════
-// 6. CATÉGORIES D'INVITÉS
-//    Gestion de la liste des catégories (famille, amis…).
-//    Utilisées pour classer les invités et filtrer les tableaux.
-// ════════════════════════════════════════════════════════
-
-// Affiche la liste des catégories et met à jour tous les selects de l'app
-function renderCategories() {
-  const ul=$('catList');if(!ul)return;
-  ul.innerHTML=state.categories.map((c,i)=>`
-    <li style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
-      <span style="font-size:14px;">${c}</span>
-      <button class="btn btn-danger btn-sm" onclick="removeCategory(${i})">✕</button>
-    </li>`).join('');
-  // Met à jour tous les menus déroulants qui listent les catégories
-  const opts=state.categories.map(c=>`<option value="${c}">${c}</option>`).join('');
-  ['g_cat','edit_cat'].forEach(id=>{const el=$(id);if(el)el.innerHTML=opts;});
-  ['filterCat','filterCivilCat','filterReligCat'].forEach(id=>{
-    const el=$(id);if(el)el.innerHTML='<option value="">Toutes catégories</option>'+opts;
-  });
-}
-
-// Ajoute une nouvelle catégorie d'invité
-async function addCategory(){
-  const v=$('newCatInput').value.trim();if(!v||state.categories.includes(v))return;
-  state.categories.push(v);$('newCatInput').value='';
-  await dbSaveCategories();renderCategories();
-}
-
-// Supprime une catégorie d'invité (les invités de cette catégorie ne sont pas supprimés)
-async function removeCategory(i){
-  if(!confirm(`Supprimer "${state.categories[i]}" ?`))return;
-  state.categories.splice(i,1);
-  await dbSaveCategories();renderCategories();
-}
-
-
-// ════════════════════════════════════════════════════════
-// 7. GESTION DES INVITÉS
-//    Création, modification, suppression d'invités.
-//    Chaque invité reçoit un UUID pour éviter les conflits
-//    si plusieurs utilisateurs ajoutent des invités en même temps.
-// ════════════════════════════════════════════════════════
-
-// Génère un UUID v4 aléatoire — probabilité de collision quasi nulle (~1 sur 10^36)
-// Remplace l'ancien compteur incrémental qui pouvait créer des doublons
-// si deux utilisateurs ajoutaient un invité au même moment.
-function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-  });
-}
-
-// Crée un objet invité avec toutes ses propriétés initialisées
-function makeGuest(nom,cat,nb,civil_inv,relig_type){
-  return{
-    id: generateUUID(),   // UUID unique — sécurisé pour usage multi-utilisateurs
-    nom, cat,
-    nb: parseInt(nb)||1,
-    civil_inv,
-    civil_rep:     null,  // null = pas encore répondu (≠ 'non' = absent)
-    civil_repondu: false,
-    relig_type,
-    relig_remise:  false,
-    relig_repondu: false,
-    relig_rep_vh:    null,
-    relig_rep_repas: null,
-    menus_enfant: 0,
-    menus_adulte: 0
-  };
-}
-
-// Ajoute un nouvel invité depuis le formulaire de saisie
-async function addGuest(){
-  const nom=$('g_nom').value.trim();if(!nom)return alert('Veuillez saisir un nom.');
-  const g=makeGuest(nom,$('g_cat').value,$('g_nb').value,$('g_civil_inv').value,$('g_relig_type').value);
-  state.guests.push(g);
-  await dbSaveGuest(g);
-  $('g_nom').value='';$('g_nb').value=1;
-  renderAll();
-}
-
-// Supprime un invité après confirmation
-async function removeGuest(id){
-  if(!confirm('Supprimer cet invité ?'))return;
-  state.guests=state.guests.filter(g=>g.id!==id);
-  await dbDeleteGuest(id);renderAll();
-}
-
-// Vide toute la liste des invités — nécessite de taper "CONFIRMER" pour valider
-async function clearAllGuests(){
-  const n=state.guests.length;
-  if(n===0) return alert('La liste est déjà vide.');
-  const confirmation=prompt(
-    `⚠️ ATTENTION — Cette action est irréversible.\n\nVous allez supprimer les ${n} invité(s).\n\nTapez CONFIRMER pour valider :`
-  );
-  if(confirmation!=='CONFIRMER') return;
-  setSyncStatus('syncing','⏳ Suppression…');
-  try{
-    // Supprime tous les invités en une seule requête (filtre sur id != 0 pour tout supprimer)
-    await db.from('guests').delete().neq('id','00000000-0000-0000-0000-000000000000');
-    state.guests=[];
-    setSyncStatus('ok','✓ Synchronisé');
-    renderAll();
-    alert(`✅ Liste vidée — ${n} invité(s) supprimé(s).`);
-  }catch(e){
-    console.error(e);setSyncStatus('error','✗ Erreur suppression');
-    alert('Erreur lors de la suppression. Veuillez réessayer.');
-  }
-}
-
-// Ouvre la modale de modification pour un invité existant
-function openEditGuest(id){
-  const g=state.guests.find(x=>x.id===id);if(!g)return;
-  $('editId').value=id;
-  $('edit_nom').value=g.nom;
-  $('edit_nb').value=g.nb;
-  $('edit_civil_inv').value=g.civil_inv;
-  $('edit_relig_type').value=g.relig_type;
-  renderCategories();
-  $('edit_cat').value=g.cat;
-  $('modalGuest').classList.add('open');
-}
-
-// Sauvegarde les modifications depuis la modale d'édition
-async function saveEditGuest(){
-  const id=$('editId').value;  // UUID (string)
-  const g=state.guests.find(x=>x.id===id);if(!g)return;
-  g.nom=$('edit_nom').value.trim();
-  g.cat=$('edit_cat').value;
-  g.nb=parseInt($('edit_nb').value)||1;
-  g.civil_inv=$('edit_civil_inv').value;
-  g.relig_type=$('edit_relig_type').value;
-  closeModal('modalGuest');
-  await dbSaveGuest(g);renderAll();
-}
-
-// Ferme une modale
-function closeModal(id){$(id).classList.remove('open');}
-
-// Met à jour un champ d'un invité (utilisé par les cases à cocher et selects inline)
-async function updateGuest(id,field,val){
-  const g=state.guests.find(x=>x.id===id);if(!g)return;
-  g[field]=val;
-  await dbSaveGuest(g);
-  renderSynthese(); // Rafraîchit uniquement la synthèse pour ne pas perdre le focus
-}
-
-
-// ════════════════════════════════════════════════════════
-// 8. AFFICHAGE DES TABLEAUX
-//    Rendu HTML des listes d'invités (invités, civil, religieux).
-//    Chaque tableau applique les filtres actifs et le tri standard.
-// ════════════════════════════════════════════════════════
-
-// Tri standard : catégorie "Mariés" en 1er, puis ordre des catégories
-// tel que défini dans l'onglet Catégories, puis alphabétique dans chaque catégorie.
-function sortGuests(list){
-  const catOrder = c => {
-    const n = normName(c||'');
-    if(n.includes('mari')) return -1;  // "Mariés" toujours en tête
-    const idx = state.categories.findIndex(x=>normName(x)===n);
-    return idx===-1 ? 999 : idx;
-  };
-  return [...list].sort((a,b)=>{
-    const ca=catOrder(a.cat), cb=catOrder(b.cat);
-    if(ca!==cb) return ca-cb;
-    return (a.nom||'').localeCompare(b.nom||'','fr');
-  });
-}
-
-// Badge HTML pour le type d'invitation religieuse
-function rRT(t){
-  if(t==='vh')    return '<span class="status-badge status-vh">🥂 VH seul</span>';
-  if(t==='repas') return '<span class="status-badge status-repas">🍽️ VH + Repas</span>';
-  return '<span class="status-badge status-attente">–</span>';
-}
-
-// Tableau de la liste générale des invités (onglet Invités)
-function renderGuestsTable(){
-  const s=$('searchGuest')?.value||'', c=$('filterCat')?.value||'';
-  const list=sortGuests(state.guests.filter(g=>
-    (!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c)
-  ));
-  const cnt=$('guestCount');if(cnt)cnt.textContent=`${list.length} invité(s)`;
-  const tb=$('guestsTbody');if(!tb)return;
-  tb.innerHTML=list.map(g=>`<tr>
-    <td><strong>${g.nom}</strong></td>
-    <td><span class="status-badge status-attente">${g.cat}</span></td>
-    <td style="text-align:center;">${g.nb}</td>
-    <td>${g.civil_inv==='oui'?'<span class="status-badge status-oui">✓ Oui</span>':'<span class="status-badge status-non">✕ Non</span>'}</td>
-    <td>${rRT(g.relig_type)}</td>
-    <td style="display:flex;gap:6px;flex-wrap:wrap;">
-      <button class="btn btn-secondary btn-sm" onclick="openEditGuest('${g.id}')">✏️</button>
-      <button class="btn btn-danger btn-sm" onclick="removeGuest('${g.id}')">🗑️</button>
-    </td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité</td></tr>';
-}
-
-// Tableau du suivi mariage civil — filtrés sur civil_inv = 'oui'
-function renderCivilTable(){
-  const s=$('searchCivil')?.value||'', c=$('filterCivilCat')?.value||'';
-  const list=sortGuests(state.guests.filter(g=>
-    g.civil_inv==='oui'&&(!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c)
-  ));
-  const tb=$('civilTbody');if(!tb)return;
-  tb.innerHTML=list.map(g=>`<tr>
-    <td><strong>${g.nom}</strong></td><td><span class="status-badge status-attente">${g.cat}</span></td>
-    <td style="text-align:center;">${g.nb}</td><td><span class="status-badge status-oui">✓ Invité</span></td>
-    <td class="check-cell"><input type="checkbox" ${g.civil_repondu?'checked':''} onchange="updateGuest('${g.id}','civil_repondu',this.checked)"></td>
-    <td><select class="cell-select" onchange="updateGuest('${g.id}','civil_rep',this.value||null)">
-      <option value="" ${!g.civil_rep?'selected':''}>— Attente —</option>
-      <option value="oui" ${g.civil_rep==='oui'?'selected':''}>✓ Présent</option>
-      <option value="non" ${g.civil_rep==='non'?'selected':''}>✕ Absent</option>
-    </select></td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité civil</td></tr>';
-}
-
-// Tableau du suivi mariage religieux — filtrés sur relig_type != 'non'
-function renderReligTable(){
-  const s=$('searchRelig')?.value||'', tf=$('filterReligType')?.value||'', c=$('filterReligCat')?.value||'';
-  const list=sortGuests(state.guests.filter(g=>
-    g.relig_type!=='non'
-    &&(!s||g.nom.toLowerCase().includes(s.toLowerCase()))
-    &&(!tf||g.relig_type===tf)
-    &&(!c||g.cat===c)
-  ));
-  const tb=$('religTbody');if(!tb)return;
-  tb.innerHTML=list.map(g=>`<tr>
-    <td><strong>${g.nom}</strong></td><td><span class="status-badge status-attente">${g.cat}</span></td>
-    <td style="text-align:center;">${g.nb}</td><td>${rRT(g.relig_type)}</td>
-    <td class="check-cell"><input type="checkbox" ${g.relig_remise?'checked':''} onchange="updateGuest('${g.id}','relig_remise',this.checked)"></td>
-    <td class="check-cell"><input type="checkbox" ${g.relig_repondu?'checked':''} onchange="updateGuest('${g.id}','relig_repondu',this.checked)"></td>
-    <td><select class="cell-select" onchange="updateGuest('${g.id}','relig_rep_vh',this.value||null)">
-      <option value="" ${!g.relig_rep_vh?'selected':''}>—</option>
-      <option value="oui" ${g.relig_rep_vh==='oui'?'selected':''}>✓ Présent</option>
-      <option value="non" ${g.relig_rep_vh==='non'?'selected':''}>✕ Absent</option>
-    </select></td>
-    <td>${g.relig_type==='repas'?`<select class="cell-select" onchange="updateGuest('${g.id}','relig_rep_repas',this.value||null)">
-      <option value="" ${!g.relig_rep_repas?'selected':''}>—</option>
-      <option value="oui" ${g.relig_rep_repas==='oui'?'selected':''}>✓ Présent</option>
-      <option value="non" ${g.relig_rep_repas==='non'?'selected':''}>✕ Absent</option>
-    </select>`:'<span style="color:var(--muted)">–</span>'}</td>
-    <td>${g.relig_type==='repas'?`<input class="num-input" type="number" min="0" value="${g.menus_enfant||0}" onchange="updateGuest('${g.id}','menus_enfant',parseInt(this.value)||0)">`:'–'}</td>
-    <td>${g.relig_type==='repas'?`<input class="num-input" type="number" min="0" value="${g.menus_adulte||0}" onchange="updateGuest('${g.id}','menus_adulte',parseInt(this.value)||0)">`:'–'}</td>
-    </tr>`).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité religieux</td></tr>';
-}
-
-
-// ════════════════════════════════════════════════════════
-// 9. SYNTHÈSE
-//    Calcule les compteurs globaux et alimente les 4 onglets :
-//    - Chiffres clés : totaux civil, VH, repas
-//    - Civil listes  : présents et sans-réponse au civil
-//    - Relig présents: présents au VH et au repas
-//    - Relig sans rép: sans réponse au VH et au repas
-//    Chaque liste applique les filtres nom et catégorie de son onglet.
-// ════════════════════════════════════════════════════════
-function renderSynthese(){
-  const gs=state.guests;
-
-  // ── Segmentation des invités selon leur statut ──
-  const cI=gs.filter(g=>g.civil_inv==='oui');
-  const cO=cI.filter(g=>g.civil_rep==='oui');    // Civil : présents confirmés
-  const cN=cI.filter(g=>g.civil_rep==='non');    // Civil : absents confirmés
-  const cA=cI.filter(g=>!g.civil_rep);           // Civil : sans réponse
-
-  const vI=gs.filter(g=>g.relig_type==='vh'||g.relig_type==='repas');
-  const vO=vI.filter(g=>g.relig_rep_vh==='oui'); // VH : présents confirmés
-  const vN=vI.filter(g=>g.relig_rep_vh==='non'); // VH : absents confirmés
-  const vA=vI.filter(g=>!g.relig_rep_vh);        // VH : sans réponse
-
-  const rI=gs.filter(g=>g.relig_type==='repas');
-  const rO=rI.filter(g=>g.relig_rep_repas==='oui'); // Repas : présents confirmés
-  const rN=rI.filter(g=>g.relig_rep_repas==='non'); // Repas : absents confirmés
-  const rA=rI.filter(g=>!g.relig_rep_repas);        // Repas : sans réponse
-
-  // Somme du nb de personnes (un invité peut représenter plusieurs personnes)
-  const nb=arr=>arr.reduce((s,g)=>s+g.nb,0);
-
-  // ── Chiffres clés ──
-  const sc=$('statsCivil');if(sc)sc.innerHTML=`<div style="grid-column:1/-1;font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--civil);margin-bottom:4px;">⚖️ Mariage Civil</div>${sC(nb(cI),'Invités')}${sC(nb(cO),'Présents','o')}${sC(nb(cN),'Absents','n')}${sC(nb(cA),'Sans réponse','a')}`;
-  const sv=$('statsVH');if(sv)sv.innerHTML=`<div style="grid-column:1/-1;font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--relig);margin-bottom:4px;">🥂 Vin d'Honneur</div>${sC(nb(vI),'Invités')}${sC(nb(vO),'Présents','o')}${sC(nb(vN),'Absents','n')}${sC(nb(vA),'Sans réponse','a')}`;
-  const sr=$('statsRepas');if(sr)sr.innerHTML=`<div style="grid-column:1/-1;font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--civil);margin-bottom:4px;">🍽️ Repas</div>${sC(nb(rI),'Invités')}${sC(nb(rO),'Présents','o')}${sC(nb(rN),'Absents','n')}${sC(nb(rA),'Sans réponse','a')}`;
-
-  // ── Popule les selects catégorie des filtres (seulement si vides) ──
-  const opts='<option value="">Toutes catégories</option>'+state.categories.map(c=>`<option value="${c}">${c}</option>`).join('');
-  ['synthFilterCat','synthFilterCatNR','synthFilterCatCivil','synthFilterCatAbs'].forEach(id=>{
-    const el=$(id);
-    if(el&&el.innerHTML==='<option value="">Toutes catégories</option>') el.innerHTML=opts;
-  });
-
-  // Gabarit HTML pour chaque ligne de liste
-  const li=g=>`<li><span>${g.nom}</span><span class="cat">${g.cat} · ${g.nb} p.</span></li>`;
-  const empty  ='<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun</li>';
-  const allOk  ='<li style="color:var(--green);padding:8px 14px;font-size:13px;">✓ Tous ont répondu</li>';
-  // Teste si nom et catégorie correspondent aux filtres actifs
-  const match=(g,s,c)=>(!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c);
-
-  // ── Onglet Civil : présents et sans réponse ──
-  const sc2=$('synthSearchCivil')?.value||'', cc=$('synthFilterCatCivil')?.value||'';
-  const lCO=$('listCivilOui'); if(lCO) lCO.innerHTML  = sortGuests(cO.filter(g=>match(g,sc2,cc))).map(li).join('')||empty;
-  const lCNR=$('listCivilNR'); if(lCNR)lCNR.innerHTML = sortGuests(cA.filter(g=>match(g,sc2,cc))).map(li).join('')||(sc2||cc?empty:allOk);
-
-  // ── Onglet Religieux présents ──
-  const s1=$('synthSearch')?.value||'', c1=$('synthFilterCat')?.value||'';
-  const lVH=$('listVH');   if(lVH) lVH.innerHTML  = sortGuests(vO.filter(g=>match(g,s1,c1))).map(li).join('')||empty;
-  const lR=$('listRepas'); if(lR)  lR.innerHTML   = sortGuests(rO.filter(g=>match(g,s1,c1))).map(li).join('')||empty;
-
-  // ── Onglet Religieux sans réponse ──
-  const s2=$('synthSearchNR')?.value||'', c2=$('synthFilterCatNR')?.value||'';
-  const lNV=$('listNRVH');    if(lNV) lNV.innerHTML  = sortGuests(vA.filter(g=>match(g,s2,c2))).map(li).join('')||(s2||c2?empty:allOk);
-  const lNR=$('listNRRepas'); if(lNR) lNR.innerHTML  = sortGuests(rA.filter(g=>match(g,s2,c2))).map(li).join('')||(s2||c2?empty:allOk);
-
-  // ── Onglet Absents ──
-  const sa=$('synthSearchAbs')?.value||'', ca=$('synthFilterCatAbs')?.value||'';
-  const lCA=$('listCivilAbs'); if(lCA) lCA.innerHTML = sortGuests(cN.filter(g=>match(g,sa,ca))).map(li).join('')||'<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun absent confirmé</li>';
-  const lVA=$('listVHAbs');    if(lVA) lVA.innerHTML = sortGuests(vN.filter(g=>match(g,sa,ca))).map(li).join('')||'<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun</li>';
-  const lRA=$('listRepasAbs'); if(lRA) lRA.innerHTML = sortGuests(rN.filter(g=>match(g,sa,ca))).map(li).join('')||'<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun</li>';
-}
-
-// Génère une carte statistique (nombre + libellé + couleur selon le type)
-function sC(n,label,t=''){
-  const c=t==='o'?'var(--green)':t==='n'?'var(--red)':'var(--gold)';
-  return`<div class="stat-card"><div class="stat-num" style="color:${c}">${n}</div><div class="stat-label">${label}</div></div>`;
-}
-
-
-// ════════════════════════════════════════════════════════
-// 10. BUDGET REPAS
-//     Gestion des tarifs par personne (VH, repas adulte, repas enfant)
-//     et estimation du coût total selon les confirmations.
-//     Un tableau par catégorie d'invités permet de visualiser
-//     la répartition du coût.
-// ════════════════════════════════════════════════════════
-function renderBudget(){
-  // Comptage des présents confirmés pour le calcul du coût
-  const vhP=state.guests.filter(g=>g.relig_rep_vh==='oui').reduce((s,g)=>s+g.nb,0);
-  const rA=state.guests.filter(g=>g.relig_rep_repas==='oui').reduce((s,g)=>s+(g.menus_adulte||0),0);
-  const rE=state.guests.filter(g=>g.relig_rep_repas==='oui').reduce((s,g)=>s+(g.menus_enfant||0),0);
-
-  // ── Tableau des tarifs (modifiable) ──
-  const tb=$('budgetLinesTbody');if(!tb)return;
-  tb.innerHTML=state.budgetLines.map(l=>`<tr>
-    <td><input style="border:none;background:transparent;font-family:'Jost',sans-serif;font-size:13px;width:200px;" value="${l.label}" onchange="updateBudgetLabel(${l.id},this.value)"></td>
-    <td><input class="num-input" type="number" min="0" value="${l.amount}" onchange="updateBudgetAmount(${l.id},parseFloat(this.value)||0)"> €</td>
-    <td><button class="btn btn-danger btn-sm" onclick="removeBudgetLine(${l.id})">✕</button></td></tr>`).join('');
-
-  // ── Estimation globale par prestation ──
-  // La ligne est attribuée à une prestation selon son libellé (vin/honneur → VH, adulte/repas → repas adulte, enfant → repas enfant)
-  let rows='',grand=0;
-  state.budgetLines.forEach(l=>{
-    const lb=l.label.toLowerCase();
-    let qty=lb.includes('vin')||lb.includes('honneur')?vhP:lb.includes('enfant')?rE:lb.includes('adulte')||lb.includes('repas')?rA:0;
-    const tot=qty*l.amount;grand+=tot;
-    rows+=`<tr><td>${l.label}</td><td style="text-align:center;">${qty}</td><td style="text-align:right;">${l.amount} €</td><td style="text-align:right;font-weight:500;">${tot.toLocaleString('fr-FR')} €</td></tr>`;
-  });
-
-  // ── Coût estimé par catégorie d'invités ──
-  // Récupère les tarifs de référence pour les calculs par catégorie
-  const tarifVH=state.budgetLines.find(l=>l.label.toLowerCase().includes('vin')||l.label.toLowerCase().includes('honneur'))?.amount||0;
-  const tarifRA=state.budgetLines.find(l=>l.label.toLowerCase().includes('adulte'))?.amount||0;
-  const tarifRE=state.budgetLines.find(l=>l.label.toLowerCase().includes('enfant'))?.amount||0;
-
-  // Agrège les données par catégorie
-  const catMap={};
-  state.guests.forEach(g=>{
-    const c=g.cat||'Sans catégorie';
-    if(!catMap[c]) catMap[c]={invVH:0,invRepas:0,presVH:0,presA:0,presE:0};
-    if(g.relig_type==='vh'||g.relig_type==='repas') catMap[c].invVH+=g.nb;
-    if(g.relig_type==='repas') catMap[c].invRepas+=g.nb;
-    if(g.relig_rep_vh==='oui') catMap[c].presVH+=g.nb;
-    if(g.relig_rep_repas==='oui'){ catMap[c].presA+=(g.menus_adulte||0); catMap[c].presE+=(g.menus_enfant||0); }
-  });
-
-  // Même ordre de tri que les tableaux (Mariés en 1er, puis catégories, puis alpha)
-  let catRows='';
-  const sortedCats=Object.keys(catMap).sort((a,b)=>{
-    const na=normName(a),nb2=normName(b);
-    if(na.includes('mari')) return -1;
-    if(nb2.includes('mari')) return 1;
-    const ia=state.categories.findIndex(x=>normName(x)===na);
-    const ib=state.categories.findIndex(x=>normName(x)===nb2);
-    return (ia===-1?999:ia)-(ib===-1?999:ib);
-  });
-  sortedCats.forEach(c=>{
-    const d=catMap[c];
-    const costMax=(d.invVH*tarifVH)+(d.invRepas*tarifRA);
-    const costConf=(d.presVH*tarifVH)+(d.presA*tarifRA)+(d.presE*tarifRE);
-    catRows+=`<tr>
-      <td><strong>${c}</strong></td>
-      <td style="text-align:center;font-size:12px;">${d.invVH>0?`🥂 ${d.invVH} inv.`:''}${d.invVH>0&&d.invRepas>0?' · ':''}${d.invRepas>0?`🍽️ ${d.invRepas} inv.`:''}</td>
-      <td style="text-align:center;font-size:12px;">${d.presVH>0?`🥂 ${d.presVH} conf.`:'–'}${d.presVH>0&&(d.presA+d.presE)>0?' · ':''}${(d.presA+d.presE)>0?`🍽️ ${d.presA+d.presE} conf.`:''}</td>
-      <td style="text-align:right;color:var(--gold);">${costMax>0?costMax.toLocaleString('fr-FR')+' €':'–'}</td>
-      <td style="text-align:right;color:var(--green);font-weight:500;">${costConf>0?costConf.toLocaleString('fr-FR')+' €':'–'}</td>
-    </tr>`;
-  });
-
-  const be=$('budgetEstimation');if(!be)return;
-  be.innerHTML=`
-    <div class="table-wrap" style="margin-bottom:20px;">
-      <table>
-        <thead><tr><th>Prestation</th><th style="text-align:center;">Qté confirmée</th><th style="text-align:right;">P.U.</th><th style="text-align:right;">Total</th></tr></thead>
-        <tbody>${rows||'<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px;">Aucune donnée</td></tr>'}</tbody>
-      </table>
-    </div>
-    <div style="background:var(--dark);color:var(--gold-light);border-radius:10px;padding:20px 28px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;">
-      <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px;">Total repas estimé</div><div style="font-size:12px;color:var(--muted);">Basé sur les réponses confirmées</div></div>
-      <div style="font-family:'Cormorant Garamond',serif;font-size:36px;color:var(--gold);">${grand.toLocaleString('fr-FR')} €</div>
-    </div>
-    <div style="font-family:'Cormorant Garamond',serif;font-size:18px;color:var(--dark);margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--gold-pale);">
-      Coût estimé <em style="color:var(--gold);">par catégorie</em>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Catégorie</th><th style="text-align:center;">Invités</th><th style="text-align:center;">Confirmés</th><th style="text-align:right;color:#d4b483;">Coût max</th><th style="text-align:right;color:#a8d5b5;">Coût confirmé</th></tr></thead>
-        <tbody>${catRows||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px;">Aucun invité religieux</td></tr>'}</tbody>
-      </table>
-    </div>`;
-}
-
-async function addBudgetLine(){
-  const line={id:state.budgetNextId++,label:'Nouvelle prestation',amount:0};
-  state.budgetLines.push(line);await dbSaveBudgetLine(line);renderBudget();
-}
-async function removeBudgetLine(id){
-  state.budgetLines=state.budgetLines.filter(l=>l.id!==id);await dbDeleteBudgetLine(id);renderBudget();
-}
-async function updateBudgetLabel(id,val){
-  const l=state.budgetLines.find(x=>x.id===id);if(l){l.label=val;await dbSaveBudgetLine(l);}
-}
-async function updateBudgetAmount(id,val){
-  const l=state.budgetLines.find(x=>x.id===id);if(l){l.amount=val;await dbSaveBudgetLine(l);renderBudget();}
-}
-
-
-// ════════════════════════════════════════════════════════
-// 11. DÉPENSES DÉTAILLÉES
-//     Gestion libre des postes de dépenses (catégories et sous-catégories).
-//     Chaque poste a un montant et un statut : Estimé ou Définitif.
-//     Le récapitulatif combine dépenses fixes + estimation repas
-//     pour donner un budget total max et un budget confirmé.
-// ════════════════════════════════════════════════════════
-function renderDepenses(){
-  const manager=$('depCatManager');
-  const saisie=$('depSaisie');
-  const recap=$('depRecap');
-  if(!manager||!saisie||!recap) return;
-
-  // ── Panneau gauche : gestion des catégories/sous-catégories ──
-  // Permet de renommer, ajouter ou supprimer catégories et sous-catégories
-  manager.innerHTML=state.depenses.map(cat=>`
-    <div style="margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-      <div style="background:var(--dark);color:var(--gold-light);padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <input style="background:transparent;border:none;color:var(--gold-light);font-family:'Jost',sans-serif;font-size:13px;font-weight:500;flex:1;letter-spacing:1px;"
-          value="${cat.nom}" onchange="renameDepCat(${cat.id},this.value)">
-        <button class="btn btn-danger btn-sm" onclick="removeDepCat(${cat.id})" style="padding:3px 8px;font-size:11px;">✕ Catégorie</button>
-      </div>
-      <div style="padding:10px 14px;">
-        ${cat.sousCategories.map(sc=>`
-          <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);">
-            <input style="border:none;background:transparent;font-family:'Jost',sans-serif;font-size:13px;flex:1;"
-              value="${sc.nom}" onchange="renameDepSub(${cat.id},${sc.id},this.value)">
-            <button class="btn btn-danger btn-sm" onclick="removeDepSub(${cat.id},${sc.id})" style="padding:2px 7px;font-size:11px;">✕</button>
-          </div>`).join('')}
-        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
-          <input type="text" id="newSub_${cat.id}" placeholder="Nouvelle sous-catégorie…"
-            style="flex:1;padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-family:'Jost',sans-serif;font-size:12px;"
-            onkeydown="if(event.key==='Enter')addDepSub(${cat.id})">
-          <button class="btn btn-secondary btn-sm" onclick="addDepSub(${cat.id})">+ Ajouter</button>
-        </div>
-      </div>
-    </div>`).join('');
-
-  // ── Panneau droit : saisie des montants et statuts ──
-  // Chaque poste a un montant (€) et un bouton bascule Estimé / Définitif
-  saisie.innerHTML=state.depenses.map(cat=>`
-    <div style="margin-bottom:20px;">
-      <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:500;color:var(--dark);margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--gold-pale);">
-        ${cat.nom}
-      </div>
-      ${cat.sousCategories.map(sc=>{
-        const isdef=(sc.statut==='definitif');
-        return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
-          <span style="font-size:13px;color:var(--text);flex:1;min-width:120px;">${sc.nom}</span>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <input class="num-input" type="number" min="0" step="any" style="width:100px;"
-              value="${sc.montant||0}" onchange="updateDepMontant(${cat.id},${sc.id},parseFloat(this.value)||0)">
-            <span style="font-size:12px;color:var(--muted);">€</span>
-          </div>
-          <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;font-size:11px;">
-            <button onclick="updateDepStatut(${cat.id},${sc.id},'estime')"
-              style="padding:5px 10px;border:none;cursor:pointer;font-family:'Jost',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.5px;transition:all 0.15s;
-              background:${!isdef?'#fff3cd':'var(--white)'};color:${!isdef?'#856404':'var(--muted)'};border-right:1px solid var(--border);">
-              〜 Estimé
-            </button>
-            <button onclick="updateDepStatut(${cat.id},${sc.id},'definitif')"
-              style="padding:5px 10px;border:none;cursor:pointer;font-family:'Jost',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.5px;transition:all 0.15s;
-              background:${isdef?'var(--green-light)':'var(--white)'};color:${isdef?'var(--green)':'var(--muted)'};">
-              ✓ Définitif
-            </button>
-          </div>
-        </div>`;}).join('')}
-    </div>`).join('');
-
-  // ── Récapitulatif global ──
-  // Reprend les tarifs repas définis dans l'onglet Budget Repas
-  const vhP2=state.guests.filter(g=>g.relig_type!=='non').reduce((s,g)=>s+g.nb,0);
-  const vhNon=state.guests.filter(g=>(g.relig_type==='vh'||g.relig_type==='repas')&&g.relig_rep_vh==='non').reduce((s,g)=>s+g.nb,0);
-  const repasInv=state.guests.filter(g=>g.relig_type==='repas').reduce((s,g)=>s+g.nb,0);
-  const repasNon=state.guests.filter(g=>g.relig_type==='repas'&&g.relig_rep_repas==='non').reduce((s,g)=>s+g.nb,0);
-  const vhOui=state.guests.filter(g=>g.relig_rep_vh==='oui').reduce((s,g)=>s+g.nb,0);
-  const estVHmax=vhP2-vhNon;
-  const estRepasMax=repasInv-repasNon;
-  const tarifVH=state.budgetLines.find(l=>l.label.toLowerCase().includes('vin')||l.label.toLowerCase().includes('honneur'))?.amount||0;
-  const tarifRepasA=state.budgetLines.find(l=>l.label.toLowerCase().includes('adulte'))?.amount||0;
-  const tarifRepasE=state.budgetLines.find(l=>l.label.toLowerCase().includes('enfant'))?.amount||0;
-  const menus_adulte_oui=state.guests.filter(g=>g.relig_rep_repas==='oui').reduce((s,g)=>s+(g.menus_adulte||0),0);
-  const menus_enfant_oui=state.guests.filter(g=>g.relig_rep_repas==='oui').reduce((s,g)=>s+(g.menus_enfant||0),0);
-  const repasEstMax=(estVHmax*tarifVH)+(estRepasMax*tarifRepasA);
-  const repasEstConf=(vhOui*tarifVH)+(menus_adulte_oui*tarifRepasA)+(menus_enfant_oui*tarifRepasE);
-
-  // Totalise les dépenses fixes en distinguant définitif et estimé
-  let totalDef=0,totalEst=0,depRows='';
-  state.depenses.forEach(cat=>{
-    let catDef=0,catEst=0;
-    cat.sousCategories.forEach(sc=>{
-      if(sc.statut==='definitif') catDef+=sc.montant||0; else catEst+=sc.montant||0;
-    });
-    const catTotal=catDef+catEst;
-    totalDef+=catDef;totalEst+=catEst;
-    if(catTotal>0){
-      depRows+=`<tr style="background:var(--gold-pale);">
-        <td style="font-weight:500;font-family:'Cormorant Garamond',serif;font-size:15px;">${cat.nom}</td>
-        <td></td>
-        <td style="text-align:right;font-weight:500;">${catDef>0?catDef.toLocaleString('fr-FR')+' €':''}</td>
-        <td style="text-align:right;font-weight:500;">${catEst>0?catEst.toLocaleString('fr-FR')+' €':''}</td>
-        <td style="text-align:right;font-weight:500;">${catTotal.toLocaleString('fr-FR')} €</td>
-      </tr>`;
-      cat.sousCategories.filter(sc=>(sc.montant||0)>0).forEach(sc=>{
-        const isdef=(sc.statut==='definitif');
-        depRows+=`<tr>
-          <td style="padding-left:24px;color:var(--muted);font-size:12px;">↳ ${sc.nom}</td>
-          <td style="text-align:center;">${isdef
-            ?'<span style="background:var(--green-light);color:var(--green);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">✓ Définitif</span>'
-            :'<span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">〜 Estimé</span>'}</td>
-          <td style="text-align:right;">${isdef?sc.montant.toLocaleString('fr-FR')+' €':''}</td>
-          <td style="text-align:right;">${!isdef?sc.montant.toLocaleString('fr-FR')+' €':''}</td>
-          <td style="text-align:right;">${sc.montant.toLocaleString('fr-FR')} €</td>
-        </tr>`;
-      });
-    }
-  });
-
-  const grandMax=totalDef+totalEst+repasEstMax;
-  const grandConf=totalDef+totalEst+repasEstConf;
-
-  recap.innerHTML=`
-    <div class="repas-bloc">
-      <div class="repas-bloc-title">🍽️ Estimation des coûts repas & vin d'honneur</div>
-      <div class="repas-detail-grid">
-        <div>
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">Basé sur les invitations (max)</div>
-          <div style="font-size:13px;">VH : <strong>${estVHmax} pers.</strong> × ${tarifVH} € = <strong>${(estVHmax*tarifVH).toLocaleString('fr-FR')} €</strong></div>
-          <div style="font-size:13px;margin-top:4px;">Repas : <strong>${estRepasMax} pers.</strong> × ${tarifRepasA} € = <strong>${(estRepasMax*tarifRepasA).toLocaleString('fr-FR')} €</strong></div>
-          <div style="margin-top:8px;font-weight:500;color:var(--gold);">Sous-total max : ${repasEstMax.toLocaleString('fr-FR')} €</div>
-        </div>
-        <div>
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">Basé sur les réponses confirmées</div>
-          <div style="font-size:13px;">VH confirmés : <strong>${vhOui} pers.</strong> × ${tarifVH} € = <strong>${(vhOui*tarifVH).toLocaleString('fr-FR')} €</strong></div>
-          <div style="font-size:13px;margin-top:4px;">Menus adulte : <strong>${menus_adulte_oui}</strong> × ${tarifRepasA} € = <strong>${(menus_adulte_oui*tarifRepasA).toLocaleString('fr-FR')} €</strong></div>
-          <div style="font-size:13px;margin-top:4px;">Menus enfant : <strong>${menus_enfant_oui}</strong> × ${tarifRepasE} € = <strong>${(menus_enfant_oui*tarifRepasE).toLocaleString('fr-FR')} €</strong></div>
-          <div style="margin-top:8px;font-weight:500;color:var(--green);">Sous-total confirmé : ${repasEstConf.toLocaleString('fr-FR')} €</div>
-        </div>
-      </div>
-    </div>
-    <div class="table-wrap" style="margin-bottom:16px;">
-      <table>
-        <thead><tr>
-          <th>Catégorie / Poste</th><th style="text-align:center;">Statut</th>
-          <th style="text-align:right;color:#4a7c5c;">Définitif</th>
-          <th style="text-align:right;color:#856404;">Estimé</th>
-          <th style="text-align:right;">Total</th>
-        </tr></thead>
-        <tbody>
-          ${depRows||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px;">Aucune dépense saisie</td></tr>'}
-          <tr style="background:var(--relig-light);">
-            <td style="font-weight:500;">🍽️ Repas & VH <span style="font-size:11px;color:var(--muted);">(estimation max)</span></td>
-            <td style="text-align:center;"><span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">〜 Estimé</span></td>
-            <td></td>
-            <td style="text-align:right;font-weight:500;">${repasEstMax.toLocaleString('fr-FR')} €</td>
-            <td style="text-align:right;font-weight:500;">${repasEstMax.toLocaleString('fr-FR')} €</td>
-          </tr>
-          <tr style="background:var(--dark);">
-            <td style="color:var(--gold-light);font-weight:500;font-family:'Cormorant Garamond',serif;">TOTAUX</td>
-            <td></td>
-            <td style="text-align:right;color:var(--green-light);font-weight:600;">${totalDef.toLocaleString('fr-FR')} €</td>
-            <td style="text-align:right;color:#ffc107;font-weight:600;">${(totalEst+repasEstMax).toLocaleString('fr-FR')} €</td>
-            <td style="text-align:right;color:var(--gold);font-weight:600;font-family:'Cormorant Garamond',serif;font-size:16px;">${grandMax.toLocaleString('fr-FR')} €</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-      <div style="background:var(--dark);color:var(--gold-light);border-radius:10px;padding:20px 24px;">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Budget total (estimation max)</div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Dont <strong style="color:var(--green-light);">${totalDef.toLocaleString('fr-FR')} € définitifs</strong> + <strong style="color:#ffc107;">${(totalEst+repasEstMax).toLocaleString('fr-FR')} € estimés</strong></div>
-        <div style="font-family:'Cormorant Garamond',serif;font-size:34px;color:var(--gold);">${grandMax.toLocaleString('fr-FR')} €</div>
-      </div>
-      <div style="background:var(--green);color:white;border-radius:10px;padding:20px 24px;">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Budget total (repas confirmés)</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.7);margin-bottom:10px;">Dépenses fixes + repas des réponses confirmées</div>
-        <div style="font-family:'Cormorant Garamond',serif;font-size:34px;color:white;">${grandConf.toLocaleString('fr-FR')} €</div>
-      </div>
-    </div>`;
-}
-
-// CRUD dépenses — catégories
-async function addDepCat(){
-  const v=$('newDepCat').value.trim();if(!v)return;
-  state.depenses.push({id:state.depNextCatId++,nom:v,sousCategories:[]});
-  $('newDepCat').value='';await dbSaveDepenses();renderDepenses();
-}
-async function removeDepCat(id){
-  if(!confirm('Supprimer cette catégorie et toutes ses sous-catégories ?'))return;
-  state.depenses=state.depenses.filter(c=>c.id!==id);await dbSaveDepenses();renderDepenses();
-}
-async function renameDepCat(id,val){
-  const c=state.depenses.find(x=>x.id===id);if(c){c.nom=val;await dbSaveDepenses();}
-}
-
-// CRUD dépenses — sous-catégories
-async function addDepSub(catId){
-  const inp=$(`newSub_${catId}`);if(!inp)return;
-  const v=inp.value.trim();if(!v)return;
-  const cat=state.depenses.find(c=>c.id===catId);if(!cat)return;
-  cat.sousCategories.push({id:state.depNextSubId++,nom:v,montant:0});
-  inp.value='';await dbSaveDepenses();renderDepenses();
-}
-async function removeDepSub(catId,subId){
-  const cat=state.depenses.find(c=>c.id===catId);if(!cat)return;
-  cat.sousCategories=cat.sousCategories.filter(s=>s.id!==subId);
-  await dbSaveDepenses();renderDepenses();
-}
-async function renameDepSub(catId,subId,val){
-  const cat=state.depenses.find(c=>c.id===catId);if(!cat)return;
-  const sub=cat.sousCategories.find(s=>s.id===subId);
-  if(sub){sub.nom=val;await dbSaveDepenses();}
-}
-async function updateDepMontant(catId,subId,val){
-  const cat=state.depenses.find(c=>c.id===catId);if(!cat)return;
-  const sub=cat.sousCategories.find(s=>s.id===subId);
-  if(sub){sub.montant=val;await dbSaveDepenses();renderDepenses();}
-}
-async function updateDepStatut(catId,subId,statut){
-  const cat=state.depenses.find(c=>c.id===catId);if(!cat)return;
-  const sub=cat.sousCategories.find(s=>s.id===subId);
-  if(sub){sub.statut=statut;await dbSaveDepenses();renderDepenses();}
-}
-
-
-// ════════════════════════════════════════════════════════
-// 12. IMPORT — LISTE D'INVITÉS
-//     Permet d'ajouter des invités en masse depuis un fichier CSV.
-//     Format attendu : Nom;Catégorie;NbPersonnes;InvitéCivil;InvitéReligieux
-//     Chaque invité importé reçoit un UUID pour éviter les conflits.
-// ════════════════════════════════════════════════════════
-let importedRows=[];
-
-function handleFileImport(event){
-  const file=event.target.files[0];if(!file)return;
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const lines=e.target.result.split('\n').filter(l=>l.trim());
-    const headers=lines[0].split(/[;,]/).map(h=>h.trim().replace(/^\uFEFF/,''));
-    importedRows=lines.slice(1).map(line=>{
-      const cols=line.split(/[;,]/).map(c=>c.trim().replace(/^"|"$/g,''));
-      const obj={};headers.forEach((h,i)=>obj[h]=cols[i]||'');return obj;
-    }).filter(r=>r[headers[0]]);
-    // Aperçu des 5 premières lignes avant confirmation
-    $('importPreview').style.display='';
-    $('importPreviewHead').innerHTML=headers.map(h=>`<th>${h}</th>`).join('');
-    $('importPreviewBody').innerHTML=importedRows.slice(0,5).map(r=>`<tr>${headers.map(h=>`<td>${r[h]||''}</td>`).join('')}</tr>`).join('');
-    if(importedRows.length>5)$('importPreviewBody').innerHTML+=`<tr><td colspan="${headers.length}" style="text-align:center;color:var(--muted);padding:8px;">… et ${importedRows.length-5} autres lignes</td></tr>`;
-  };
-  reader.readAsText(file,'UTF-8');
-}
-
-async function confirmImport(){
-  if(!importedRows.length)return;
-  let added=0;
-  for(const r of importedRows){
-    const nom=r['Nom']||r['nom']||r['NOM']||Object.values(r)[0];if(!nom)continue;
-    const cat=r['Catégorie']||r['categorie']||r['Categorie']||'';
-    // Ajoute la catégorie si elle n'existe pas encore
-    if(cat&&!state.categories.includes(cat))state.categories.push(cat);
-    const g=makeGuest(
-      nom.trim(),
-      cat||state.categories[0]||'Autres',
-      parseInt(r['NbPersonnes']||r['Nb']||1)||1,
-      (r['InvitéCivil']||r['Civil']||'non').toLowerCase().includes('oui')?'oui':'non',
-      parseRT(r['InvitéReligieux']||r['Religieux']||'non')
-    );
-    state.guests.push(g);await dbSaveGuest(g);added++;
-  }
-  await dbSaveCategories();renderAll();
-  $('importPreview').style.display='none';$('fileInput').value='';importedRows=[];
-  alert(`✅ ${added} invité(s) importé(s) avec succès !`);
-}
-
-// Interprète la valeur de la colonne InvitéReligieux
-function parseRT(v){
-  if(!v)return'non';const lv=v.toLowerCase().trim();
-  if(lv.includes('repas'))return'repas';
-  if(lv==='vh'||lv.includes('vh')||lv.includes('honneur'))return'vh';
-  return'non';
-}
-function cancelImport(){$('importPreview').style.display='none';$('fileInput').value='';importedRows=[];}
-
-// Génère un modèle CSV vide avec les bonnes colonnes
-function downloadTemplate(){
-  const csv='Nom;Catégorie;NbPersonnes;InvitéCivil;InvitéReligieux\nDupont Jean;Famille proche;2;oui;repas\nMartin Sophie;Amis;1;non;vh\nBernard Paul;Collègues;1;oui;non\n';
-  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='modele-invites.csv';a.click();
-}
-
-
-// ════════════════════════════════════════════════════════
-// 13. IMPORT — MISE À JOUR DES RÉPONSES
-//     Permet de mettre à jour les réponses (civil, VH, repas)
-//     et les invitations remises depuis un fichier CSV.
-//     Règles :
-//     - La recherche utilise Nom + Catégorie pour éviter les doublons
-//     - Cellule vide = donnée existante conservée
-//     - Saisir "oui" ou "non" coche automatiquement "a répondu"
-//     - Option "remise à zéro" pour repartir de zéro avant l'import
-// ════════════════════════════════════════════════════════
-let majRows=[];
-
-function handleMajImport(event){
-  const file=event.target.files[0];if(!file)return;
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const lines=e.target.result.split(/\r?\n/).filter(l=>l.trim());
-    const headers=lines[0].split(/[;,]/).map(h=>h.trim().replace(/^\uFEFF/,'').replace(/[^\x20-\x7E\u00C0-\u024F]/g,''));
-    majRows=lines.slice(1).map(line=>{
-      const cols=line.split(/[;,]/).map(c=>c.trim().replace(/^"|"$/g,'').replace(/^\s+|\s+$/g,''));
-      const obj={};headers.forEach((h,i)=>obj[h]=cols[i]!==undefined?cols[i]:'');return obj;
-    }).filter(r=>(r[headers[0]]||'').trim()!=='');
-
-    // Aperçu
-    $('importMajPreview').style.display='';
-    $('importMajPreviewHead').innerHTML=headers.map(h=>`<th>${h}</th>`).join('');
-    $('importMajPreviewBody').innerHTML=majRows.slice(0,5).map(r=>`<tr>${headers.map(h=>`<td>${r[h]||''}</td>`).join('')}</tr>`).join('');
-    if(majRows.length>5)$('importMajPreviewBody').innerHTML+=`<tr><td colspan="${headers.length}" style="text-align:center;color:var(--muted);padding:8px;">… et ${majRows.length-5} autres lignes</td></tr>`;
-
-    // Diagnostic : teste la reconnaissance de chaque ligne (nom + catégorie)
-    let found=0,notfound=[],ambiguous=[];
-    majRows.forEach(r=>{
-      const nom=(r['Nom']||r['nom']||'').trim();
-      const cat=(r['Catégorie']||r['categorie']||r['Categorie']||'').trim();
-      if(!nom)return;
-      const matches=findGuests(nom,cat);
-      if(matches.length===1) found++;
-      else if(matches.length===0) notfound.push(cat?`${nom} (${cat})`:nom);
-      else ambiguous.push(`${nom} — précisez la Catégorie`);
-    });
-
-    const stats=$('importMajStats');
-    if(stats){
-      let html=`<strong style="color:var(--green);">✓ ${found} invité(s) identifié(s) avec certitude</strong>`;
-      if(ambiguous.length)html+=`<br><span style="color:var(--gold);">⚠️ ${ambiguous.length} doublon(s) de nom :</span><ul style="margin:4px 0 4px 16px;font-size:12px;">${ambiguous.map(a=>`<li>${a}</li>`).join('')}</ul>`;
-      if(notfound.length)html+=`<br><span style="color:var(--red);">✗ ${notfound.length} introuvable(s) : ${notfound.slice(0,5).map(n=>`<em>${n}</em>`).join(', ')}${notfound.length>5?' …':''}</span>`;
-      // Option remise à zéro : efface toutes les réponses avant d'appliquer le fichier
-      html+=`<br><br><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:10px 14px;background:var(--red-light);border-radius:6px;border:1px solid #e0b0b0;">
-        <input type="checkbox" id="chkResetReponses" style="width:16px;height:16px;accent-color:var(--red);">
-        <span><strong style="color:var(--red);">Remettre à zéro toutes les réponses avant l'import</strong><br>
-        <span style="font-size:11px;color:var(--muted);">Cochez si votre fichier contient l'ensemble des réponses connues à ce jour.</span></span>
-      </label>`;
-      html+=`<br><span style="color:var(--muted);font-size:12px;">Sans cette option : colonnes vides = données existantes conservées.</span>`;
-      stats.innerHTML=html;
-    }
-  };
-  reader.readAsText(file,'UTF-8');
-}
-
-async function confirmMajImport(){
-  if(!majRows.length)return;
-  const doReset=$('chkResetReponses')?.checked||false;
-
-  // Si remise à zéro demandée : efface toutes les réponses en base avant l'import
-  if(doReset){
-    setSyncStatus('syncing','⏳ Remise à zéro…');
-    state.guests.forEach(g=>{
-      g.civil_rep=null;g.civil_repondu=false;
-      g.relig_remise=false;g.relig_repondu=false;
-      g.relig_rep_vh=null;g.relig_rep_repas=null;
-      g.menus_adulte=0;g.menus_enfant=0;
-    });
-    for(const g of state.guests)await dbSaveGuest(g);
-  }
-
-  let updated=0,skipped=0,ambig=0;
-
-  for(const r of majRows){
-    const nom=(r['Nom']||r['nom']||'').trim();if(!nom)continue;
-    const cat=(r['Catégorie']||r['categorie']||r['Categorie']||'').trim();
-    const matches=findGuests(nom,cat);
-    if(matches.length===0){skipped++;continue;}
-    if(matches.length>1){ambig++;continue;}  // Doublon non résolu → ignoré
-    const g=matches[0];
-
-    // Interprète chaque colonne (null = ne pas modifier)
-    const civilRep    =parseOuiNon(r['CivilReponse']);
-    const religRemise =parseBool(r['ReligInvitationRemise']);
-    const religRepVH  =parseOuiNon(r['ReligReponseVH']);
-    const religRepRep =parseOuiNon(r['ReligReponseRepas']);
-    const menusA=(r['MenusAdulte']||'').trim()!==''?parseInt(r['MenusAdulte'])||0:null;
-    const menusE=(r['MenusEnfant']||'').trim()!==''?parseInt(r['MenusEnfant'])||0:null;
-
-    // Applique les valeurs non-nulles ; une réponse coche automatiquement "a répondu"
-    if(civilRep   !==null){g.civil_rep=civilRep;g.civil_repondu=true;}
-    if(religRemise!==null) g.relig_remise=religRemise;
-    if(religRepVH !==null){g.relig_rep_vh=religRepVH;g.relig_repondu=true;}
-    if(religRepRep!==null){g.relig_rep_repas=religRepRep;g.relig_repondu=true;}
-    if(menusA     !==null) g.menus_adulte=menusA;
-    if(menusE     !==null) g.menus_enfant=menusE;
-
-    await dbSaveGuest(g);updated++;
-  }
-
-  cancelMajImport();renderAll();
-  let msg='✅ Mise à jour terminée !';
-  if(doReset)msg+='\n↺ Réponses précédentes effacées avant import';
-  msg+=`\n\n✓ ${updated} invité(s) mis à jour`;
-  if(skipped)msg+=`\n✗ ${skipped} ligne(s) ignorée(s) (nom introuvable)`;
-  if(ambig)  msg+=`\n⚠️ ${ambig} ligne(s) ignorée(s) (doublon — ajoutez la colonne Catégorie)`;
-  alert(msg);
-}
-
-function cancelMajImport(){
-  $('importMajPreview').style.display='none';
-  $('fileInputMaj').value='';
-  majRows=[];
-}
-
-// Génère un modèle CSV pré-rempli avec les noms et catégories des invités existants
-function downloadMajTemplate(){
-  const headers='Nom;Catégorie;CivilReponse;ReligInvitationRemise;ReligReponseVH;ReligReponseRepas;MenusAdulte;MenusEnfant';
-  const rows=sortGuests(state.guests).map(g=>`${g.nom};${g.cat};;;;;;`).join('\n');
-  const csv=headers+'\n'+rows+'\n';
-  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='maj-reponses.csv';a.click();
-}
-
-
-// ════════════════════════════════════════════════════════
-// 14. EXPORT CSV (EXCEL)
-//     Génère des fichiers CSV téléchargeables depuis l'onglet Export.
-//     Formats disponibles : invités, civil, religieux, synthèse, dépenses.
-//     Le BOM UTF-8 (\uFEFF) assure l'affichage correct des accents dans Excel.
-// ════════════════════════════════════════════════════════
-function exportCSV(type){
-  let headers=[],rows=[],filename='';
-  const oui=v=>v==='oui'?'oui':v==='non'?'non':''; // Réponse ou vide si pas de réponse
-  const bool=v=>v?'oui':'non';
-  const sorted=sortGuests(state.guests);
-
-  if(type==='invites'){
-    filename='invites.csv';
-    headers=['Nom','Catégorie','NbPersonnes','InvitéCivil','InvitéReligieux'];
-    rows=sorted.map(g=>[g.nom,g.cat,g.nb,g.civil_inv,g.relig_type]);
-  }
-  else if(type==='civil'){
-    filename='civil.csv';
-    headers=['Nom','Catégorie','NbPersonnes','InvitéCivil','ARépondu','Réponse'];
-    rows=sorted.filter(g=>g.civil_inv==='oui').map(g=>[g.nom,g.cat,g.nb,'oui',bool(g.civil_repondu),oui(g.civil_rep)]);
-  }
-  else if(type==='religieux'){
-    filename='religieux.csv';
-    headers=['Nom','Catégorie','NbPersonnes','TypeInvitation','InvitationRemise','ARépondu','RéponseVH','RéponseRepas','MenusAdulte','MenusEnfant'];
-    rows=sorted.filter(g=>g.relig_type!=='non').map(g=>[
-      g.nom,g.cat,g.nb,g.relig_type,bool(g.relig_remise),bool(g.relig_repondu),
-      oui(g.relig_rep_vh),oui(g.relig_rep_repas),
-      g.relig_type==='repas'?(g.menus_adulte||0):'',
-      g.relig_type==='repas'?(g.menus_enfant||0):''
-    ]);
-  }
-  else if(type==='synthese'){
-    filename='synthese-complete.csv';
-    headers=['Nom','Catégorie','NbPersonnes','InvitéCivil','RéponseCivil','TypeReligieux','InvitationRemise','ARéponduRelig','RéponseVH','RéponseRepas','MenusAdulte','MenusEnfant'];
-    rows=sorted.map(g=>[
-      g.nom,g.cat,g.nb,g.civil_inv,oui(g.civil_rep),
-      g.relig_type,bool(g.relig_remise),bool(g.relig_repondu),
-      oui(g.relig_rep_vh),oui(g.relig_rep_repas),
-      g.relig_type==='repas'?(g.menus_adulte||0):'',
-      g.relig_type==='repas'?(g.menus_enfant||0):''
-    ]);
-  }
-  else if(type==='depenses'){
-    filename='depenses.csv';
-    headers=['Catégorie','Sous-catégorie','Montant (€)','Statut'];
-    state.depenses.forEach(cat=>{
-      cat.sousCategories.forEach(sc=>{
-        rows.push([cat.nom,sc.nom,sc.montant||0,sc.statut==='definitif'?'Définitif':'Estimé']);
-      });
-    });
-  }
-
-  // Construction du CSV avec échappement des guillemets et point-virgule
-  const escape=v=>{
-    const s=String(v??'');
-    return s.includes(';')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s;
-  };
-  const csv='\uFEFF'+[headers,...rows].map(r=>r.map(escape).join(';')).join('\n');
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();
-}
-
-
-// ════════════════════════════════════════════════════════
-// 15. UTILITAIRES
-//     Fonctions partagées par plusieurs modules.
-// ════════════════════════════════════════════════════════
-
-// Normalise un nom pour la comparaison : minuscules, sans accents, espaces compressés
-// Utilisé pour la recherche insensible à la casse et aux accents
-function normName(s){
-  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
-}
-
-// Interprète une valeur oui/non/vide
-// Retourne 'oui', 'non', ou null (vide = ne pas modifier)
-function parseOuiNon(v){
-  if(!v||v.trim()==='') return null;
-  if(v.toLowerCase().includes('oui')) return 'oui';
-  if(v.toLowerCase().includes('non')) return 'non';
-  return null;
-}
-
-// Interprète une valeur booléenne oui/vide
-// Retourne true, false, ou null (vide = ne pas modifier)
-function parseBool(v){
-  if(!v||v.trim()==='') return null;
-  return v.toLowerCase().includes('oui');
-}
-
-// Recherche un invité par nom + catégorie optionnelle
-// Si catégorie fournie → filtre nom ET catégorie (résout les doublons de prénom)
-// Si pas de catégorie  → filtre sur le nom seul (peut retourner plusieurs résultats)
-function findGuests(nom,cat){
-  const n=normName(nom);
-  const c=normName(cat);
-  if(c){
-    const exact=state.guests.filter(g=>normName(g.nom)===n&&normName(g.cat)===c);
-    if(exact.length>0)return exact;
-  }
-  return state.guests.filter(g=>normName(g.nom)===n);
-}
-
-
-
-// ════════════════════════════════════════════════════════
-// 17. SAUVEGARDES HORODATÉES
-//     Système de sauvegarde manuelle et automatique.
-//     Chaque sauvegarde stocke un snapshot JSON complet
-//     (invités + catégories + budget + dépenses) dans la
-//     table "backups" de Supabase, avec un horodatage précis.
-//     Les 20 sauvegardes les plus récentes sont conservées.
-//     La sauvegarde automatique tourne en arrière-plan via setInterval.
-// ════════════════════════════════════════════════════════
-
-let autoBackupTimer  = null;   // Référence au timer de sauvegarde auto
-let autoBackupActive = false;  // État actuel de la sauvegarde auto
-let autoBackupMinutes = 30;    // Fréquence en minutes (par défaut 30)
-
-// ── Crée un snapshot complet de toutes les données ──
-function buildSnapshot() {
-  return {
-    guests:      state.guests,
-    categories:  state.categories,
-    budgetLines: state.budgetLines,
-    depenses:    state.depenses,
-  };
-}
-
-// ── Formate une date en français lisible ──
-function formatDate(isoStr) {
-  const d = new Date(isoStr);
-  return d.toLocaleDateString('fr-FR', {day:'2-digit',month:'long',year:'numeric'})
-       + ' à ' + d.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-}
-
-// ── Sauvegarde manuelle (déclenchée par le bouton) ──
-async function saveBackupNow() {
-  setSyncStatus('syncing','⏳ Sauvegarde…');
-  try {
-    const snapshot = buildSnapshot();
-    const now      = new Date().toISOString();
-    const { error } = await db.from('backups').insert({
-      created_at: now,
-      type:       'manual',
-      label:      'Sauvegarde manuelle',
-      data:       JSON.stringify(snapshot)
-    });
-    if(error) throw error;
-
-    // Supprime les sauvegardes au-delà des 20 plus récentes
-    await pruneOldBackups();
-
-    setSyncStatus('ok','✓ Synchronisé');
-    renderBackupList();
-
-    // Confirme visuellement dans le header
-    const btn = document.querySelector('[onclick="saveBackupNow()"]');
-    if(btn){ btn.textContent='✓ Sauvegardé !'; setTimeout(()=>{ btn.textContent='💾 Sauvegarder'; },2000); }
-
-  } catch(e) {
-    console.error(e);
-    setSyncStatus('error','✗ Erreur sauvegarde');
-    alert('Erreur lors de la sauvegarde. Veuillez réessayer.');
-  }
-}
-
-// ── Sauvegarde automatique (déclenchée par le timer) ──
-async function saveAutoBackup() {
-  setSyncStatus('syncing','⏳ Auto-sauvegarde…');
-  try {
-    const snapshot = buildSnapshot();
-    const now      = new Date().toISOString();
-    const { error } = await db.from('backups').insert({
-      created_at: now,
-      type:       'auto',
-      label:      `Auto — toutes les ${autoBackupMinutes} min`,
-      data:       JSON.stringify(snapshot)
-    });
-    if(error) throw error;
-    await pruneOldBackups();
-    setSyncStatus('ok','✓ Synchronisé');
-    updateNextBackupInfo();
-    renderBackupList();
-  } catch(e) {
-    console.error(e);
-    setSyncStatus('error','✗ Erreur auto-sauvegarde');
-  }
-}
-
-// ── Active ou désactive la sauvegarde automatique ──
-function toggleAutoBackup(enabled) {
-  autoBackupActive = enabled;
-  if(enabled) {
-    startAutoBackup();
-  } else {
-    stopAutoBackup();
-  }
-  // Persiste le préférence dans localStorage
-  localStorage.setItem('autoBackupEnabled', enabled ? '1' : '0');
-  localStorage.setItem('autoBackupMinutes', autoBackupMinutes);
-  updateNextBackupInfo();
-}
-
-// ── Démarre le timer de sauvegarde automatique ──
-function startAutoBackup() {
-  stopAutoBackup(); // Annule un éventuel timer précédent
-  const ms = autoBackupMinutes * 60 * 1000;
-  autoBackupTimer = setInterval(saveAutoBackup, ms);
-  const el = $('autoBackupStatus');
-  if(el) el.textContent = `🔄 Auto ${autoBackupMinutes} min`;
-  updateNextBackupInfo();
-}
-
-// ── Arrête le timer ──
-function stopAutoBackup() {
-  if(autoBackupTimer) { clearInterval(autoBackupTimer); autoBackupTimer = null; }
-  const el = $('autoBackupStatus');
-  if(el) el.textContent = '';
-  const info = $('nextBackupInfo');
-  if(info) info.textContent = '';
-}
-
-// ── Change la fréquence et redémarre si actif ──
-function changeAutoInterval(val) {
-  autoBackupMinutes = parseInt(val) || 30;
-  const lbl = $('autoIntervalLabel');
-  if(lbl) lbl.textContent = autoBackupMinutes < 60
-    ? `${autoBackupMinutes} min`
-    : `${autoBackupMinutes/60} h`;
-  localStorage.setItem('autoBackupMinutes', autoBackupMinutes);
-  if(autoBackupActive) startAutoBackup();
-}
-
-// ── Affiche la prochaine sauvegarde prévue ──
-function updateNextBackupInfo() {
-  const el = $('nextBackupInfo');
-  if(!el) return;
-  if(!autoBackupActive || !autoBackupTimer) { el.textContent = ''; return; }
-  const next = new Date(Date.now() + autoBackupMinutes * 60 * 1000);
-  el.textContent = `Prochaine sauvegarde : ${next.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`;
-}
-
-// ── Supprime les sauvegardes au-delà des 20 plus récentes ──
-async function pruneOldBackups() {
-  try {
-    // Récupère les ids triés du plus récent au plus ancien
-    const { data } = await db.from('backups').select('id').order('created_at', {ascending:false});
-    if(data && data.length > 20) {
-      const toDelete = data.slice(20).map(r => r.id);
-      await db.from('backups').delete().in('id', toDelete);
-    }
-  } catch(e) { console.error(e); }
-}
-
-// ── Affiche la liste des sauvegardes ──
-async function renderBackupList() {
-  const container = $('backupList');
-  if(!container) return;
-  try {
-    const { data: backups, error } = await db
-      .from('backups')
-      .select('id, created_at, type, label, data')
-      .order('created_at', {ascending:false})
-      .limit(20);
-
-    if(error) throw error;
-
-    if(!backups || backups.length === 0) {
-      container.innerHTML = '<div style="text-align:center;color:var(--muted);padding:32px;font-size:13px;">Aucune sauvegarde pour l\'instant.<br>Cliquez sur 💾 Sauvegarder pour créer la première.</div>';
-      return;
-    }
-
-    container.innerHTML = backups.map(b => {
-      const snap = (() => { try { return JSON.parse(b.data); } catch(e){ return null; } })();
-      const nbGuests  = snap?.guests?.length  ?? '?';
-      const nbDep     = snap?.depenses?.reduce((s,c)=>s+c.sousCategories.length,0) ?? '?';
-      const isAuto    = b.type === 'auto';
-      return `<div class="backup-row">
-        <div class="backup-meta">
-          <div class="backup-date">
-            <span class="backup-badge ${isAuto?'badge-auto':'badge-manual'}">${isAuto?'Auto':'Manuel'}</span>
-            &nbsp;${formatDate(b.created_at)}
-          </div>
-          <div class="backup-info">${nbGuests} invité(s) · ${nbDep} poste(s) de dépense</div>
-        </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-secondary btn-sm" onclick="previewBackup('${b.id}')" title="Voir le contenu">👁️ Aperçu</button>
-          <button class="btn btn-danger btn-sm" onclick="restoreBackup('${b.id}','${formatDate(b.created_at).replace(/'/g,'\\'')}')" title="Restaurer">↺ Restaurer</button>
-          <button class="btn btn-outline btn-sm" onclick="deleteBackup('${b.id}')" title="Supprimer">🗑️</button>
-        </div>
-      </div>`;
-    }).join('');
-
-  } catch(e) {
-    console.error(e);
-    container.innerHTML = '<div style="text-align:center;color:var(--red);padding:24px;font-size:13px;">Erreur de chargement des sauvegardes.</div>';
-  }
-}
-
-// ── Aperçu d'une sauvegarde ──
-async function previewBackup(id) {
-  const { data } = await db.from('backups').select('created_at,data').eq('id',id).single();
-  if(!data) return;
-  const snap = JSON.parse(data.data);
-  const depTotal = snap.depenses?.reduce((s,c)=>s+c.sousCategories.reduce((ss,sc)=>ss+(sc.montant||0),0),0)||0;
-  alert(`📋 Aperçu — ${formatDate(data.created_at)}\n\n`
-    + `👥 Invités : ${snap.guests?.length||0}\n`
-    + `🏷️ Catégories : ${snap.categories?.join(', ')||'—'}\n`
-    + `💰 Lignes budget repas : ${snap.budgetLines?.length||0}\n`
-    + `📋 Postes dépenses : ${snap.depenses?.reduce((s,c)=>s+c.sousCategories.length,0)||0}\n`
-    + `💶 Total dépenses : ${depTotal.toLocaleString('fr-FR')} €`
-  );
-}
-
-// ── Restaure une sauvegarde (remplace l'état courant) ──
-async function restoreBackup(id, dateLabel) {
-  if(!confirm(`⚠️ Restaurer la sauvegarde du :\n${dateLabel}\n\nCela remplacera toutes les données actuelles.\nCette action est irréversible.\n\nConfirmer ?`)) return;
-
-  setSyncStatus('syncing','⏳ Restauration…');
-  try {
-    const { data } = await db.from('backups').select('data').eq('id',id).single();
-    if(!data) throw new Error('Sauvegarde introuvable');
-    const snap = JSON.parse(data.data);
-
-    // Crée d'abord une sauvegarde de sécurité de l'état actuel
-    await db.from('backups').insert({
-      created_at: new Date().toISOString(),
-      type:       'manual',
-      label:      'Avant restauration (auto)',
-      data:       JSON.stringify(buildSnapshot())
-    });
-
-    // Réinitialise la base avec les données de la sauvegarde
-    await db.from('guests').delete().neq('id','00000000-0000-0000-0000-000000000000');
-    for(const g of (snap.guests||[])) await db.from('guests').upsert(g,{onConflict:'id'});
-
-    if(snap.categories){
-      await db.from('categories').delete().neq('nom','___');
-      await db.from('categories').insert(snap.categories.map(nom=>({nom})));
-    }
-    if(snap.budgetLines){
-      for(const l of snap.budgetLines) await db.from('budget_lines').upsert(l,{onConflict:'id'});
-    }
-    if(snap.depenses){
-      await db.from('depenses').upsert({id:1,data:JSON.stringify(snap.depenses)},{onConflict:'id'});
-    }
-
-    // Recharge tout depuis la base
-    await loadData();
-    renderAll();
-    setSyncStatus('ok','✓ Synchronisé');
-    alert('✅ Restauration réussie !\n\nUne sauvegarde de sécurité de l\'état précédent a été créée automatiquement.');
-
-  } catch(e) {
-    console.error(e);
-    setSyncStatus('error','✗ Erreur restauration');
-    alert('Erreur lors de la restauration : ' + e.message);
-  }
-}
-
-// ── Supprime une sauvegarde ──
-async function deleteBackup(id) {
-  if(!confirm('Supprimer cette sauvegarde ?')) return;
-  try {
-    await db.from('backups').delete().eq('id',id);
-    renderBackupList();
-  } catch(e) { console.error(e); }
-}
-
-// ── Initialise les préférences de sauvegarde auto au démarrage ──
-function initBackupPreferences() {
-  const saved      = localStorage.getItem('autoBackupEnabled');
-  const savedMin   = parseInt(localStorage.getItem('autoBackupMinutes')) || 30;
-  autoBackupMinutes = savedMin;
-
-  const sel = $('autoBackupInterval');
-  if(sel) sel.value = String(savedMin);
-
-  const lbl = $('autoIntervalLabel');
-  if(lbl) lbl.textContent = savedMin < 60 ? `${savedMin} min` : `${savedMin/60} h`;
-
-  if(saved === '1') {
-    const toggle = $('autoBackupToggle');
-    if(toggle){ toggle.checked = true; }
-    autoBackupActive = true;
-    startAutoBackup();
-  }
-}
-
-
-// ════════════════════════════════════════════════════════
-// 16. RENDER ALL
-//     Rafraîchit tous les panneaux visibles d'un coup.
-//     Appelée après toute modification de l'état (state).
-// ════════════════════════════════════════════════════════
-function renderAll(){
-  renderCategories();
-  renderGuestsTable();
-  renderCivilTable();
-  renderReligTable();
-  renderSynthese();
-  renderBudget();
-  renderDepenses();
-  renderBackupList();
-}
-
-</script>
-<style>
-  :root {
-    --gold:#b8945a;--gold-light:#d4b483;--gold-pale:#f5ead8;--cream:#faf7f2;
-    --dark:#2c2416;--text:#3d3020;--muted:#8a7660;--white:#ffffff;
-    --civil:#4a7c9e;--civil-light:#e8f2f8;--relig:#7a5c8a;--relig-light:#f0eaf4;
-    --green:#4a7c5c;--green-light:#e8f4ec;--red:#9e4a4a;--red-light:#f4e8e8;
-    --border:#e0d5c5;--shadow:0 2px 20px rgba(44,36,22,0.08);
-  }
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'Jost',sans-serif;background:var(--cream);color:var(--text);min-height:100vh;}
-  .header{background:var(--dark);padding:20px 40px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 30px rgba(0,0,0,0.3);}
-  .header-title{color:var(--gold-light);font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:300;letter-spacing:2px;}
-  .header-title span{color:var(--gold);font-style:italic;}
-  .header-subtitle{color:var(--muted);font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-top:3px;}
-  .sync-indicator{font-size:11px;padding:3px 10px;border-radius:20px;background:var(--green-light);color:var(--green);white-space:nowrap;}
-  .sync-indicator.syncing{background:#fff3cd;color:#856404;}
-  .sync-indicator.error{background:var(--red-light);color:var(--red);}
-  nav{background:var(--white);border-bottom:1px solid var(--border);display:flex;padding:0 40px;overflow-x:auto;}
-  .nav-btn{padding:16px 20px;font-family:'Jost',sans-serif;font-size:12px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;transition:all 0.2s;white-space:nowrap;}
-  .nav-btn:hover{color:var(--gold);}
-  .nav-btn.active{color:var(--gold);border-bottom-color:var(--gold);}
-  .main{padding:32px 40px;max-width:1500px;margin:0 auto;}
-  .panel{display:none;}.panel.active{display:block;}
-  .section-title{font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:300;color:var(--dark);margin-bottom:6px;}
-  .section-title em{color:var(--gold);font-style:italic;}
-  .section-sub{color:var(--muted);font-size:13px;letter-spacing:1px;margin-bottom:28px;}
-  .card{background:var(--white);border-radius:12px;border:1px solid var(--border);box-shadow:var(--shadow);padding:24px 28px;margin-bottom:24px;}
-  .card-title{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:500;color:var(--dark);margin-bottom:16px;display:flex;align-items:center;gap:10px;}
-  .btn{padding:10px 20px;border-radius:6px;border:none;cursor:pointer;font-family:'Jost',sans-serif;font-size:13px;font-weight:500;letter-spacing:0.5px;transition:all 0.2s;display:inline-flex;align-items:center;gap:6px;}
-  .btn-primary{background:var(--gold);color:var(--white);}.btn-primary:hover{background:var(--gold-light);}
-  .btn-secondary{background:var(--gold-pale);color:var(--gold);border:1px solid var(--gold-light);}.btn-secondary:hover{background:var(--gold-light);color:var(--white);}
-  .btn-danger{background:var(--red-light);color:var(--red);border:1px solid #e0b0b0;}.btn-danger:hover{background:var(--red);color:white;}
-  .btn-sm{padding:6px 12px;font-size:12px;}
-  .btn-outline{background:transparent;border:1px solid var(--border);color:var(--muted);}.btn-outline:hover{border-color:var(--gold);color:var(--gold);}
-  .table-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border);}
-  table{width:100%;border-collapse:collapse;font-size:13px;}
-  thead{background:var(--dark);}
-  thead th{padding:12px 14px;color:var(--gold-light);font-weight:500;letter-spacing:0.8px;font-size:11px;text-transform:uppercase;text-align:left;white-space:nowrap;}
-  tbody tr{border-bottom:1px solid var(--border);transition:background 0.15s;}tbody tr:last-child{border-bottom:none;}tbody tr:hover{background:var(--gold-pale);}
-  tbody td{padding:11px 14px;vertical-align:middle;}
-  .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;}
-  .form-group{display:flex;flex-direction:column;gap:5px;}
-  .form-group label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:500;}
-  .form-group input,.form-group select{padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-family:'Jost',sans-serif;font-size:13px;color:var(--text);background:var(--white);transition:border 0.2s;}
-  .form-group input:focus,.form-group select:focus{outline:none;border-color:var(--gold);}
-  select.cell-select{border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:12px;font-family:'Jost',sans-serif;background:var(--white);color:var(--text);cursor:pointer;}
-  select.cell-select:focus{outline:none;border-color:var(--gold);}
-  .check-cell{text-align:center;}input[type="checkbox"]{width:16px;height:16px;accent-color:var(--gold);cursor:pointer;}
-  .status-badge{display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap;}
-  .status-oui{background:var(--green-light);color:var(--green);}.status-non{background:var(--red-light);color:var(--red);}
-  .status-attente{background:#f5f0e8;color:var(--muted);}.status-vh{background:var(--relig-light);color:var(--relig);}.status-repas{background:#e8f0f4;color:var(--civil);}
-  .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-bottom:28px;}
-  .stat-card{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:20px;text-align:center;box-shadow:var(--shadow);}
-  .stat-num{font-family:'Cormorant Garamond',serif;font-size:42px;font-weight:300;color:var(--gold);line-height:1;margin-bottom:6px;}
-  .stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
-  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
-  .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;}
-  @media(max-width:1100px){.three-col{grid-template-columns:1fr 1fr;}}
-  @media(max-width:900px){.two-col,.three-col{grid-template-columns:1fr;}}
-  .import-zone{border:2px dashed var(--border);border-radius:10px;padding:32px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:20px;}
-  .import-zone:hover{border-color:var(--gold);background:var(--gold-pale);}
-  .import-zone .icon{font-size:36px;margin-bottom:10px;}
-  .import-zone p{color:var(--muted);font-size:13px;}
-  #fileInput{display:none;}
-  .filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center;}
-  .filter-bar input[type="text"]{padding:8px 14px;border:1px solid var(--border);border-radius:6px;font-family:'Jost',sans-serif;font-size:13px;width:220px;}
-  .filter-bar input[type="text"]:focus{outline:none;border-color:var(--gold);}
-  .filter-bar select{padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-family:'Jost',sans-serif;font-size:13px;color:var(--text);}
-  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(44,36,22,0.5);z-index:200;align-items:center;justify-content:center;}
-  .modal-overlay.open{display:flex;}
-  .modal{background:var(--white);border-radius:14px;padding:32px;max-width:600px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.25);}
-  .modal-title{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:400;color:var(--dark);margin-bottom:20px;}
-  .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px;}
-  .pill-tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
-  .pill-tab{padding:8px 18px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:12px;font-weight:500;letter-spacing:0.5px;cursor:pointer;color:var(--muted);transition:all 0.2s;}
-  .pill-tab.active{background:var(--gold);color:white;border-color:var(--gold);}
-  .divider{border:none;border-top:1px solid var(--border);margin:20px 0;}
-  .notice{background:var(--gold-pale);border-left:3px solid var(--gold);padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;color:var(--text);margin-bottom:16px;}
-  .list-people{list-style:none;}
-  .list-people li{padding:8px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;font-size:13px;}
-  .list-people li:last-child{border-bottom:none;}
-  .list-people li .cat{color:var(--muted);font-size:12px;}
-  .num-input{width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:'Jost',sans-serif;}
-  .num-input:focus{outline:none;border-color:var(--gold);}
-  /* Budget élargi */
-  .budget-cat-header{background:var(--dark);color:var(--gold-light);font-family:'Cormorant Garamond',serif;font-size:16px;padding:10px 16px;border-radius:6px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;}
-  .budget-cat-header .cat-total{font-size:14px;color:var(--gold);}
-  .budget-sub-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
-  .budget-sub-row:last-child{border-bottom:none;}
-  .budget-sub-label{flex:1;font-size:13px;}
-  .budget-sub-label input{border:none;background:transparent;font-family:'Jost',sans-serif;font-size:13px;color:var(--text);width:100%;}
-  .budget-sub-label input:focus{outline:none;}
-  .budget-grand-total{background:var(--dark);color:var(--gold-light);border-radius:10px;padding:20px 28px;margin-top:24px;display:flex;justify-content:space-between;align-items:center;}
-  .budget-grand-total .amount{font-family:'Cormorant Garamond',serif;font-size:36px;color:var(--gold);}
-  .repas-bloc{background:var(--gold-pale);border:1px solid var(--gold-light);border-radius:10px;padding:20px 24px;margin-bottom:20px;}
-  .repas-bloc-title{font-family:'Cormorant Garamond',serif;font-size:18px;color:var(--dark);margin-bottom:12px;}
-  .repas-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;}
-  @media(max-width:700px){.repas-detail-grid{grid-template-columns:1fr;}.main{padding:20px 16px;}.header{padding:16px;}nav{padding:0 10px;}.two-col,.three-col{grid-template-columns:1fr;}}
-</style>
-</head>
-<body>
-
-<div id="appScreen" style="display:block;">
-  <div class="header">
-    <div>
-      <div class="header-title">✦ Mariage de <span>Lucie & Rémi</span></div>
-      <div class="header-subtitle">Gestion des invitations & budget</div>
-    </div>
-    <div>
-      <span id="syncStatus" class="sync-indicator">✓ Synchronisé</span>
-    </div>
-  </div>
-
-  <nav>
-    <button class="nav-btn active" onclick="showPanel('synthese',this)">📊 Synthèse</button>
-    <button class="nav-btn" onclick="showPanel('invites',this)">👥 Invités</button>
-    <button class="nav-btn" onclick="showPanel('civil',this)">⚖️ Civil</button>
-    <button class="nav-btn" onclick="showPanel('religieux',this)">⛪ Religieux</button>
-    <button class="nav-btn" onclick="showPanel('budget',this)">💰 Budget</button>
-    <button class="nav-btn" onclick="showPanel('budget_detail',this)">📋 Dépenses</button>
-    <button class="nav-btn" onclick="showPanel('categories',this)">🏷️ Catégories invités</button>
-    <button class="nav-btn" onclick="showPanel('import',this)">📥 Import Excel</button>
-    <button class="nav-btn" onclick="showPanel('export',this)">📤 Export Excel</button>
-  </nav>
-
-  <div class="main">
-
-    <!-- ══ SYNTHÈSE ══ -->
-    <div class="panel active" id="panel-synthese">
-      <div class="section-title">Vue d'ensemble <em>& synthèse</em></div>
-      <div class="section-sub">Récapitulatif en temps réel</div>
-      <div class="pill-tabs">
-        <button class="pill-tab active" onclick="switchSynthTab('chiffres',this)">📊 Chiffres clés</button>
-        <button class="pill-tab" onclick="switchSynthTab('civil',this)">⚖️ Civil — listes</button>
-        <button class="pill-tab" onclick="switchSynthTab('listes',this)">⛪ Religieux — présents</button>
-        <button class="pill-tab" onclick="switchSynthTab('nonrepondu',this)">⛪ Religieux — sans réponse</button>
-      </div>
-
-      <!-- Chiffres clés -->
-      <div id="synth-chiffres">
-        <div id="statsCivil" class="summary-grid"></div>
-        <div id="statsVH" class="summary-grid" style="margin-top:8px;"></div>
-        <div id="statsRepas" class="summary-grid" style="margin-top:8px;"></div>
-      </div>
-
-      <!-- Civil listes -->
-      <div id="synth-civil" style="display:none;">
-        <div class="filter-bar" style="margin-bottom:16px;">
-          <input type="text" id="synthSearchCivil" placeholder="🔍 Rechercher un nom…" oninput="renderSynthese()" style="width:220px;">
-          <select id="synthFilterCatCivil" onchange="renderSynthese()"><option value="">Toutes catégories</option></select>
-        </div>
-        <div class="two-col">
-          <div class="card"><div class="card-title">⚖️ Présents au mariage civil</div><ul class="list-people" id="listCivilOui"></ul></div>
-          <div class="card"><div class="card-title">⏳ Sans réponse — Civil</div><ul class="list-people" id="listCivilNR"></ul></div>
-        </div>
-      </div>
-
-      <!-- Religieux présents -->
-      <div id="synth-listes" style="display:none;">
-        <div class="filter-bar" style="margin-bottom:16px;">
-          <input type="text" id="synthSearch" placeholder="🔍 Rechercher un nom…" oninput="renderSynthese()" style="width:220px;">
-          <select id="synthFilterCat" onchange="renderSynthese()"><option value="">Toutes catégories</option></select>
-        </div>
-        <div class="two-col">
-          <div class="card"><div class="card-title">🥂 Présents au Vin d'Honneur</div><ul class="list-people" id="listVH"></ul></div>
-          <div class="card"><div class="card-title">🍽️ Présents au Repas</div><ul class="list-people" id="listRepas"></ul></div>
-        </div>
-      </div>
-
-      <!-- Religieux sans réponse -->
-      <div id="synth-nonrepondu" style="display:none;">
-        <div class="filter-bar" style="margin-bottom:16px;">
-          <input type="text" id="synthSearchNR" placeholder="🔍 Rechercher un nom…" oninput="renderSynthese()" style="width:220px;">
-          <select id="synthFilterCatNR" onchange="renderSynthese()"><option value="">Toutes catégories</option></select>
-        </div>
-        <div class="two-col">
-          <div class="card"><div class="card-title">⏳ Sans réponse — Vin d'Honneur</div><ul class="list-people" id="listNRVH"></ul></div>
-          <div class="card"><div class="card-title">⏳ Sans réponse — Repas</div><ul class="list-people" id="listNRRepas"></ul></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══ INVITÉS ══ -->
-    <div class="panel" id="panel-invites">
-      <div class="section-title">Liste des <em>invités</em></div>
-      <div class="section-sub">Gérez tous vos invités depuis cette page</div>
-      <div class="card">
-        <div class="card-title">➕ Ajouter un invité</div>
-        <div class="form-grid">
-          <div class="form-group"><label>Nom & Prénom</label><input type="text" id="g_nom" placeholder="Dupont Marie"></div>
-          <div class="form-group"><label>Catégorie</label><select id="g_cat"></select></div>
-          <div class="form-group"><label>Nb de personnes</label><input type="number" id="g_nb" value="1" min="1"></div>
-          <div class="form-group"><label>Invité au Civil ?</label><select id="g_civil_inv"><option value="oui">Oui</option><option value="non">Non</option></select></div>
-          <div class="form-group"><label>Invité au Religieux ?</label><select id="g_relig_type"><option value="non">Non</option><option value="vh">Vin d'honneur seul</option><option value="repas">VH + Repas</option></select></div>
-        </div>
-        <div style="margin-top:16px;"><button class="btn btn-primary" onclick="addGuest()">✦ Ajouter l'invité</button></div>
-      </div>
-      <div class="card">
-        <div class="filter-bar">
-          <input type="text" id="searchGuest" placeholder="🔍 Rechercher…" oninput="renderGuestsTable()">
-          <select id="filterCat" onchange="renderGuestsTable()"><option value="">Toutes catégories</option></select>
-          <span id="guestCount" style="color:var(--muted);font-size:13px;margin-left:auto;"></span>
-          <button class="btn btn-danger btn-sm" onclick="clearAllGuests()" title="Supprimer toute la liste">🗑️ Vider la liste</button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Nom</th><th>Catégorie</th><th>Nb pers.</th><th>Invité Civil</th><th>Invité Religieux</th><th>Actions</th></tr></thead>
-            <tbody id="guestsTbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══ CIVIL ══ -->
-    <div class="panel" id="panel-civil">
-      <div class="section-title">Mariage <em>Civil</em></div>
-      <div class="section-sub">Suivi des invitations et réponses pour la cérémonie civile</div>
-      <div class="card">
-        <div class="filter-bar">
-          <input type="text" id="searchCivil" placeholder="🔍 Rechercher…" oninput="renderCivilTable()">
-          <select id="filterCivilCat" onchange="renderCivilTable()"><option value="">Toutes catégories</option></select>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Nom</th><th>Catégorie</th><th>Nb pers.</th><th>Invité</th><th>A répondu</th><th>Réponse</th></tr></thead>
-            <tbody id="civilTbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══ RELIGIEUX ══ -->
-    <div class="panel" id="panel-religieux">
-      <div class="section-title">Mariage <em>Religieux</em></div>
-      <div class="section-sub">Suivi complet : vin d'honneur, repas, remise d'invitation, menus</div>
-      <div class="card">
-        <div class="filter-bar">
-          <input type="text" id="searchRelig" placeholder="🔍 Rechercher…" oninput="renderReligTable()">
-          <select id="filterReligType" onchange="renderReligTable()">
-            <option value="">Tous types</option>
-            <option value="vh">Vin d'honneur seul</option>
-            <option value="repas">VH + Repas</option>
-          </select>
-          <select id="filterReligCat" onchange="renderReligTable()"><option value="">Toutes catégories</option></select>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Nom</th><th>Catégorie</th><th>Nb pers.</th><th>Type invitation</th><th>Invitation remise</th><th>A répondu</th><th>Réponse VH</th><th>Réponse Repas</th><th>Menus enfants</th><th>Menus adultes</th></tr></thead>
-            <tbody id="religTbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══ BUDGET REPAS ══ -->
-    <div class="panel" id="panel-budget">
-      <div class="section-title">Budget <em>Repas</em></div>
-      <div class="section-sub">Coûts par personne et estimation selon les confirmations</div>
-      <div class="two-col">
-        <div>
-          <div class="card">
-            <div class="card-title">📋 Tarifs par personne</div>
-            <div class="notice">Définissez le coût par personne pour chaque prestation de repas.</div>
-            <div class="table-wrap">
-              <table><thead><tr><th>Prestation</th><th>€ / personne</th><th></th></tr></thead><tbody id="budgetLinesTbody"></tbody></table>
-            </div>
-            <button class="btn btn-secondary" style="margin-top:14px;" onclick="addBudgetLine()">➕ Ajouter une ligne</button>
-          </div>
-        </div>
-        <div>
-          <div class="card">
-            <div class="card-title">📊 Estimation repas</div>
-            <div id="budgetEstimation"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══ DÉPENSES DÉTAILLÉES ══ -->
-    <div class="panel" id="panel-budget_detail">
-      <div class="section-title">Suivi des <em>Dépenses</em></div>
-      <div class="section-sub">Gérez toutes vos dépenses par catégorie et consultez le récapitulatif complet</div>
-
-      <div class="two-col">
-        <!-- Colonne gauche : gestion des catégories/postes -->
-        <div>
-          <div class="card">
-            <div class="card-title">⚙️ Gérer les catégories de dépenses</div>
-            <div id="depCatManager"></div>
-            <hr class="divider">
-            <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
-              <div class="form-group" style="flex:1;min-width:150px;">
-                <label>Nouvelle catégorie</label>
-                <input type="text" id="newDepCat" placeholder="ex: Transport">
-              </div>
-              <button class="btn btn-primary" onclick="addDepCat()">Ajouter</button>
-            </div>
-          </div>
-        </div>
-        <!-- Colonne droite : saisie des montants -->
-        <div>
-          <div class="card">
-            <div class="card-title">✏️ Saisir les montants</div>
-            <div id="depSaisie"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Récapitulatif global -->
-      <div class="card">
-        <div class="card-title">📊 Récapitulatif global</div>
-        <div id="depRecap"></div>
-      </div>
-    </div>
-
-    <!-- ══ CATÉGORIES INVITÉS ══ -->
-    <div class="panel" id="panel-categories">
-      <div class="section-title">Catégories <em>d'invités</em></div>
-      <div class="section-sub">Personnalisez les catégories pour classer vos invités</div>
-      <div class="card" style="max-width:500px;">
-        <div class="card-title">Catégories actuelles</div>
-        <ul id="catList" style="list-style:none;margin-bottom:16px;"></ul>
-        <hr class="divider">
-        <div style="display:flex;gap:10px;align-items:flex-end;">
-          <div class="form-group" style="flex:1;"><label>Nouvelle catégorie</label><input type="text" id="newCatInput" placeholder="ex: Amis du lycée"></div>
-          <button class="btn btn-primary" onclick="addCategory()">Ajouter</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══ IMPORT ══ -->
-    <div class="panel" id="panel-import">
-      <div class="section-title">Import depuis <em>Excel</em></div>
-      <div class="section-sub">Deux types d'import disponibles selon vos besoins</div>
-
-      <div class="two-col">
-
-        <!-- ─ Import liste invités ─ -->
-        <div class="card">
-          <div class="card-title">👥 Import — Nouvelle liste d'invités</div>
-          <div class="notice">
-            Utilisez cet import pour <strong>ajouter de nouveaux invités</strong> depuis votre fichier Excel initial.<br><br>
-            <strong>Colonnes obligatoires :</strong><br>
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">Nom</code> &nbsp;
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">Catégorie</code> &nbsp;
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">NbPersonnes</code> &nbsp;
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">InvitéCivil</code> &nbsp;
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">InvitéReligieux</code><br><br>
-            <em>InvitéCivil</em> : <strong>oui</strong> ou <strong>non</strong><br>
-            <em>InvitéReligieux</em> : <strong>non</strong>, <strong>vh</strong> ou <strong>repas</strong>
-          </div>
-          <div class="import-zone" onclick="document.getElementById('fileInput').click()">
-            <div class="icon">📄</div>
-            <p><strong>Cliquez pour sélectionner</strong> le fichier CSV</p>
-            <p style="margin-top:6px;font-size:12px;">Excel → Enregistrer sous → CSV UTF-8</p>
-          </div>
-          <input type="file" id="fileInput" accept=".csv" onchange="handleFileImport(event)">
-          <div id="importPreview" style="display:none;">
-            <hr class="divider">
-            <div style="font-weight:500;margin-bottom:8px;font-size:14px;">Aperçu (5 premières lignes)</div>
-            <div class="table-wrap"><table><thead><tr id="importPreviewHead"></tr></thead><tbody id="importPreviewBody"></tbody></table></div>
-            <div style="margin-top:14px;display:flex;gap:10px;">
-              <button class="btn btn-primary" onclick="confirmImport()">✦ Confirmer l'import</button>
-              <button class="btn btn-outline" onclick="cancelImport()">Annuler</button>
-            </div>
-          </div>
-          <hr class="divider">
-          <div style="font-weight:500;margin-bottom:6px;font-size:14px;">📤 Télécharger le modèle</div>
-          <button class="btn btn-secondary btn-sm" onclick="downloadTemplate()">⬇️ Modèle CSV invités</button>
-        </div>
-
-        <!-- ─ Import mise à jour réponses ─ -->
-        <div class="card">
-          <div class="card-title">🔄 Import — Mise à jour des réponses</div>
-          <div class="notice">
-            Utilisez cet import pour <strong>mettre à jour les réponses et invitations remises</strong> d'invités déjà présents dans l'application.<br><br>
-            <strong>Colonnes d'identification :</strong><br>
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">Nom</code> — obligatoire<br>
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">Catégorie</code> — <strong>recommandé si plusieurs invités ont le même nom</strong><br><br>
-            <strong>Colonnes optionnelles</strong> (laissez vide = non modifié) :<br><br>
-            <span style="display:inline-block;background:var(--civil-light);color:var(--civil);padding:2px 6px;border-radius:4px;font-size:11px;font-weight:500;margin-bottom:4px;">CIVIL</span><br>
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">CivilReponse</code> : <strong>oui</strong> (présent) / <strong>non</strong> (absent)<br>
-            <em style="font-size:12px;color:var(--muted);">→ coche automatiquement "a répondu"</em><br><br>
-            <span style="display:inline-block;background:var(--relig-light);color:var(--relig);padding:2px 6px;border-radius:4px;font-size:11px;font-weight:500;margin-bottom:4px;">RELIGIEUX</span><br>
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">ReligInvitationRemise</code> : <strong>oui</strong> / <strong>non</strong><br>
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">ReligReponseVH</code> : <strong>oui</strong> / <strong>non</strong><br>
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">ReligReponseRepas</code> : <strong>oui</strong> / <strong>non</strong><br>
-            <em style="font-size:12px;color:var(--muted);">→ coche automatiquement "a répondu"</em><br><br>
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">MenusAdulte</code> : nombre &nbsp;
-            <code style="background:rgba(0,0,0,0.06);padding:2px 5px;border-radius:3px;">MenusEnfant</code> : nombre<br><br>
-            <span style="background:var(--green-light);color:var(--green);padding:3px 8px;border-radius:4px;font-size:11px;font-weight:500;">↺ Annule et remplace</span>
-            <span style="font-size:12px;color:var(--muted);margin-left:6px;">Une nouvelle intégration écrase les données précédentes pour les invités concernés.</span>
-          </div>
-          <div class="import-zone" onclick="document.getElementById('fileInputMaj').click()">
-            <div class="icon">🔄</div>
-            <p><strong>Cliquez pour sélectionner</strong> le fichier CSV de mise à jour</p>
-            <p style="margin-top:6px;font-size:12px;">Excel → Enregistrer sous → CSV UTF-8</p>
-          </div>
-          <input type="file" id="fileInputMaj" accept=".csv" onchange="handleMajImport(event)">
-          <div id="importMajPreview" style="display:none;">
-            <hr class="divider">
-            <div style="font-weight:500;margin-bottom:8px;font-size:14px;">Aperçu (5 premières lignes)</div>
-            <div class="table-wrap"><table><thead><tr id="importMajPreviewHead"></tr></thead><tbody id="importMajPreviewBody"></tbody></table></div>
-            <div id="importMajStats" style="margin:12px 0;font-size:13px;color:var(--muted);"></div>
-            <div style="margin-top:14px;display:flex;gap:10px;">
-              <button class="btn btn-primary" onclick="confirmMajImport()">✦ Confirmer la mise à jour</button>
-              <button class="btn btn-outline" onclick="cancelMajImport()">Annuler</button>
-            </div>
-          </div>
-          <hr class="divider">
-          <div style="font-weight:500;margin-bottom:6px;font-size:14px;">📤 Télécharger le modèle</div>
-          <button class="btn btn-secondary btn-sm" onclick="downloadMajTemplate()">⬇️ Modèle CSV mise à jour</button>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- ══ EXPORT EXCEL ══ -->
-    <div class="panel" id="panel-export">
-      <div class="section-title">Export vers <em>Excel</em></div>
-      <div class="section-sub">Téléchargez vos données au format CSV, ouvrable directement dans Excel</div>
-      <div class="card" style="max-width:700px;">
-        <div class="card-title">📤 Choisissez les données à exporter</div>
-        <div class="notice">Chaque export génère un fichier CSV que vous pouvez ouvrir dans Excel. Les données correspondent à l'état actuel de l'application.</div>
-
-        <div style="display:flex;flex-direction:column;gap:12px;margin-top:8px;">
-
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border:1px solid var(--border);border-radius:8px;background:var(--cream);">
-            <div>
-              <div style="font-weight:500;font-size:14px;">👥 Liste complète des invités</div>
-              <div style="font-size:12px;color:var(--muted);margin-top:3px;">Nom, catégorie, nb personnes, type d'invitation civil et religieux</div>
-            </div>
-            <button class="btn btn-secondary btn-sm" onclick="exportCSV('invites')">⬇️ Exporter</button>
-          </div>
-
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border:1px solid var(--border);border-radius:8px;background:var(--cream);">
-            <div>
-              <div style="font-weight:500;font-size:14px;">⚖️ Suivi mariage civil</div>
-              <div style="font-size:12px;color:var(--muted);margin-top:3px;">Nom, catégorie, nb personnes, réponse au civil</div>
-            </div>
-            <button class="btn btn-secondary btn-sm" onclick="exportCSV('civil')">⬇️ Exporter</button>
-          </div>
-
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border:1px solid var(--border);border-radius:8px;background:var(--cream);">
-            <div>
-              <div style="font-weight:500;font-size:14px;">⛪ Suivi mariage religieux</div>
-              <div style="font-size:12px;color:var(--muted);margin-top:3px;">Nom, catégorie, type invitation, remise, réponses VH et repas, menus</div>
-            </div>
-            <button class="btn btn-secondary btn-sm" onclick="exportCSV('religieux')">⬇️ Exporter</button>
-          </div>
-
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border:1px solid var(--border);border-radius:8px;background:var(--cream);">
-            <div>
-              <div style="font-weight:500;font-size:14px;">📊 Synthèse complète</div>
-              <div style="font-size:12px;color:var(--muted);margin-top:3px;">Toutes les données invités + réponses civil et religieux en une seule feuille</div>
-            </div>
-            <button class="btn btn-secondary btn-sm" onclick="exportCSV('synthese')">⬇️ Exporter</button>
-          </div>
-
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border:1px solid var(--border);border-radius:8px;background:var(--cream);">
-            <div>
-              <div style="font-weight:500;font-size:14px;">💰 Suivi budgétaire des dépenses</div>
-              <div style="font-size:12px;color:var(--muted);margin-top:3px;">Catégorie, sous-catégorie, montant, statut (définitif/estimé)</div>
-            </div>
-            <button class="btn btn-secondary btn-sm" onclick="exportCSV('depenses')">⬇️ Exporter</button>
-          </div>
-
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /main -->
-</div><!-- /appScreen -->
-
-<!-- MODAL EDIT GUEST -->
-<div class="modal-overlay" id="modalGuest">
-  <div class="modal">
-    <div class="modal-title">✏️ Modifier l'invité</div>
-    <input type="hidden" id="editId">
-    <div class="form-grid">
-      <div class="form-group"><label>Nom & Prénom</label><input type="text" id="edit_nom"></div>
-      <div class="form-group"><label>Catégorie</label><select id="edit_cat"></select></div>
-      <div class="form-group"><label>Nb de personnes</label><input type="number" id="edit_nb" min="1"></div>
-      <div class="form-group"><label>Invité au Civil</label><select id="edit_civil_inv"><option value="oui">Oui</option><option value="non">Non</option></select></div>
-      <div class="form-group"><label>Type Religieux</label><select id="edit_relig_type"><option value="non">Non invité</option><option value="vh">Vin d'honneur seul</option><option value="repas">VH + Repas</option></select></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal('modalGuest')">Annuler</button>
-      <button class="btn btn-primary" onclick="saveEditGuest()">Enregistrer</button>
-    </div>
-  </div>
-</div>
-
-<script>
 // ══════════════════════════════════════════
 //  CONFIGURATION SUPABASE
 // ══════════════════════════════════════════
@@ -2597,7 +601,7 @@ const $ = id => document.getElementById(id);
 
 // ══ STATE ══
 let state = {
-  guests: [], guestNextId: 1,
+  guests: [],
   categories: ['Famille proche','Famille éloignée','Amis','Collègues','Voisins','Autres'],
   budgetLines: [
     {id:1, label:"Vin d'honneur", amount:35},
@@ -2652,7 +656,7 @@ async function loadData() {
       db.from('budget_lines').select('*').order('id'),
       db.from('depenses').select('*').order('id')
     ]);
-    if(guests&&guests.length){state.guests=guests;state.guestNextId=Math.max(...guests.map(g=>g.id))+1;}
+    if(guests&&guests.length){state.guests=guests;}
     if(cats&&cats.length) state.categories=cats.map(c=>c.nom);
     if(budgets&&budgets.length){state.budgetLines=budgets;state.budgetNextId=Math.max(...budgets.map(b=>b.id))+1;}
     if(depenses&&depenses.length){
@@ -2748,8 +752,16 @@ async function removeCategory(i){
 }
 
 // ══ INVITÉS ══
+// Génère un UUID v4 aléatoire — probabilité de collision quasi nulle (~1 sur 10^36)
+// Évite les doublons d'id si deux utilisateurs ajoutent un invité au même moment.
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
 function makeGuest(nom,cat,nb,civil_inv,relig_type){
-  return{id:state.guestNextId++,nom,cat,nb:parseInt(nb)||1,civil_inv,civil_rep:null,civil_repondu:false,
+  return{id:generateUUID(),nom,cat,nb:parseInt(nb)||1,civil_inv,civil_rep:null,civil_repondu:false,
     relig_type,relig_remise:false,relig_repondu:false,relig_rep_vh:null,relig_rep_repas:null,menus_enfant:0,menus_adulte:0};
 }
 async function addGuest(){
@@ -2770,9 +782,8 @@ async function clearAllGuests(){
   // Suppression en base
   setSyncStatus('syncing','⏳ Suppression…');
   try{
-    await db.from('guests').delete().neq('id',0);
+    await db.from('guests').delete().neq('id','00000000-0000-0000-0000-000000000000');
     state.guests=[];
-    state.guestNextId=1;
     setSyncStatus('ok','✓ Synchronisé');
     renderAll();
     alert(`✅ Liste vidée — ${n} invité(s) supprimé(s).`);
@@ -3503,10 +1514,231 @@ function exportCSV(type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();
 }
 
+// ══════════════════════════════════════════════════════════
+// SAUVEGARDES HORODATÉES
+// Système de sauvegarde manuelle et automatique.
+// Chaque sauvegarde stocke un snapshot JSON complet
+// (invités + catégories + budget + dépenses) dans la
+// table "backups" de Supabase, avec un horodatage précis.
+// Les 20 sauvegardes les plus récentes sont conservées.
+// ══════════════════════════════════════════════════════════
+
+let autoBackupTimer   = null;
+let autoBackupActive  = false;
+let autoBackupMinutes = 30;
+
+function buildSnapshot() {
+  return {
+    guests:      state.guests,
+    categories:  state.categories,
+    budgetLines: state.budgetLines,
+    depenses:    state.depenses,
+  };
+}
+
+function formatDate(isoStr) {
+  const d = new Date(isoStr);
+  return d.toLocaleDateString('fr-FR', {day:'2-digit',month:'long',year:'numeric'})
+       + ' à ' + d.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+async function saveBackupNow() {
+  setSyncStatus('syncing','⏳ Sauvegarde…');
+  try {
+    const snapshot = buildSnapshot();
+    const now = new Date().toISOString();
+    const { error } = await db.from('backups').insert({
+      created_at: now, type: 'manual', label: 'Sauvegarde manuelle',
+      data: JSON.stringify(snapshot)
+    });
+    if(error) throw error;
+    await pruneOldBackups();
+    setSyncStatus('ok','✓ Synchronisé');
+    renderBackupList();
+    const btn = document.querySelector('[onclick="saveBackupNow()"]');
+    if(btn){ const old=btn.textContent; btn.textContent='✓ Sauvegardé !'; setTimeout(()=>{ btn.textContent=old; },2000); }
+  } catch(e) {
+    console.error(e); setSyncStatus('error','✗ Erreur sauvegarde');
+    alert('Erreur lors de la sauvegarde. Veuillez réessayer.');
+  }
+}
+
+async function saveAutoBackup() {
+  setSyncStatus('syncing','⏳ Auto-sauvegarde…');
+  try {
+    const snapshot = buildSnapshot();
+    const now = new Date().toISOString();
+    const { error } = await db.from('backups').insert({
+      created_at: now, type: 'auto', label: `Auto — toutes les ${autoBackupMinutes} min`,
+      data: JSON.stringify(snapshot)
+    });
+    if(error) throw error;
+    await pruneOldBackups();
+    setSyncStatus('ok','✓ Synchronisé');
+    updateNextBackupInfo();
+    renderBackupList();
+  } catch(e) { console.error(e); setSyncStatus('error','✗ Erreur auto-sauvegarde'); }
+}
+
+function toggleAutoBackup(enabled) {
+  autoBackupActive = enabled;
+  if(enabled) startAutoBackup(); else stopAutoBackup();
+  localStorage.setItem('autoBackupEnabled', enabled ? '1' : '0');
+  localStorage.setItem('autoBackupMinutes', autoBackupMinutes);
+  updateNextBackupInfo();
+}
+
+function startAutoBackup() {
+  stopAutoBackup();
+  const ms = autoBackupMinutes * 60 * 1000;
+  autoBackupTimer = setInterval(saveAutoBackup, ms);
+  const el = $('autoBackupStatus');
+  if(el) el.textContent = `🔄 Auto ${autoBackupMinutes} min`;
+  updateNextBackupInfo();
+}
+
+function stopAutoBackup() {
+  if(autoBackupTimer) { clearInterval(autoBackupTimer); autoBackupTimer = null; }
+  const el = $('autoBackupStatus'); if(el) el.textContent = '';
+  const info = $('nextBackupInfo'); if(info) info.textContent = '';
+}
+
+function changeAutoInterval(val) {
+  autoBackupMinutes = parseInt(val) || 30;
+  const lbl = $('autoIntervalLabel');
+  if(lbl) lbl.textContent = autoBackupMinutes < 60 ? `${autoBackupMinutes} min` : `${autoBackupMinutes/60} h`;
+  localStorage.setItem('autoBackupMinutes', autoBackupMinutes);
+  if(autoBackupActive) startAutoBackup();
+}
+
+function updateNextBackupInfo() {
+  const el = $('nextBackupInfo'); if(!el) return;
+  if(!autoBackupActive || !autoBackupTimer) { el.textContent = ''; return; }
+  const next = new Date(Date.now() + autoBackupMinutes * 60 * 1000);
+  el.textContent = `Prochaine sauvegarde : ${next.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`;
+}
+
+async function pruneOldBackups() {
+  try {
+    const { data } = await db.from('backups').select('id').order('created_at', {ascending:false});
+    if(data && data.length > 20) {
+      const toDelete = data.slice(20).map(r => r.id);
+      await db.from('backups').delete().in('id', toDelete);
+    }
+  } catch(e) { console.error(e); }
+}
+
+async function renderBackupList() {
+  const container = $('backupList');
+  if(!container) return;
+  try {
+    const { data: backups, error } = await db.from('backups')
+      .select('id, created_at, type, label, data')
+      .order('created_at', {ascending:false}).limit(20);
+    if(error) throw error;
+    if(!backups || backups.length === 0) {
+      container.innerHTML = '<div style="text-align:center;color:var(--muted);padding:32px;font-size:13px;">Aucune sauvegarde pour l\\'instant.<br>Cliquez sur 💾 Sauvegarder pour créer la première.</div>';
+      return;
+    }
+    container.innerHTML = backups.map(b => {
+      const snap = (() => { try { return JSON.parse(b.data); } catch(e){ return null; } })();
+      const nbGuests = snap?.guests?.length ?? '?';
+      const nbDep = snap?.depenses?.reduce((s,c)=>s+c.sousCategories.length,0) ?? '?';
+      const isAuto = b.type === 'auto';
+      return `<div class="backup-row">
+        <div class="backup-meta">
+          <div class="backup-date">
+            <span class="backup-badge ${isAuto?'badge-auto':'badge-manual'}">${isAuto?'Auto':'Manuel'}</span>
+            &nbsp;${formatDate(b.created_at)}
+          </div>
+          <div class="backup-info">${nbGuests} invité(s) · ${nbDep} poste(s) de dépense</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary btn-sm" onclick="previewBackup('${b.id}')" title="Voir le contenu">👁️ Aperçu</button>
+          <button class="btn btn-danger btn-sm" onclick="restoreBackup('${b.id}','${formatDate(b.created_at).replace(/'/g,"\\\\'")}')" title="Restaurer">↺ Restaurer</button>
+          <button class="btn btn-outline btn-sm" onclick="deleteBackup('${b.id}')" title="Supprimer">🗑️</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    console.error(e);
+    container.innerHTML = '<div style="text-align:center;color:var(--red);padding:24px;font-size:13px;">Erreur de chargement des sauvegardes.</div>';
+  }
+}
+
+async function previewBackup(id) {
+  const { data } = await db.from('backups').select('created_at,data').eq('id',id).single();
+  if(!data) return;
+  const snap = JSON.parse(data.data);
+  const depTotal = snap.depenses?.reduce((s,c)=>s+c.sousCategories.reduce((ss,sc)=>ss+(sc.montant||0),0),0)||0;
+  alert(`📋 Aperçu — ${formatDate(data.created_at)}\\n\\n`
+    + `👥 Invités : ${snap.guests?.length||0}\\n`
+    + `🏷️ Catégories : ${snap.categories?.join(', ')||'—'}\\n`
+    + `💰 Lignes budget repas : ${snap.budgetLines?.length||0}\\n`
+    + `📋 Postes dépenses : ${snap.depenses?.reduce((s,c)=>s+c.sousCategories.length,0)||0}\\n`
+    + `💶 Total dépenses : ${depTotal.toLocaleString('fr-FR')} €`);
+}
+
+async function restoreBackup(id, dateLabel) {
+  if(!confirm(`⚠️ Restaurer la sauvegarde du :\\n${dateLabel}\\n\\nCela remplacera toutes les données actuelles.\\nCette action est irréversible.\\n\\nConfirmer ?`)) return;
+  setSyncStatus('syncing','⏳ Restauration…');
+  try {
+    const { data } = await db.from('backups').select('data').eq('id',id).single();
+    if(!data) throw new Error('Sauvegarde introuvable');
+    const snap = JSON.parse(data.data);
+
+    await db.from('backups').insert({
+      created_at: new Date().toISOString(), type: 'manual', label: 'Avant restauration (auto)',
+      data: JSON.stringify(buildSnapshot())
+    });
+
+    await db.from('guests').delete().neq('id','00000000-0000-0000-0000-000000000000');
+    for(const g of (snap.guests||[])) await db.from('guests').upsert(g,{onConflict:'id'});
+
+    if(snap.categories){
+      await db.from('categories').delete().neq('nom','___');
+      await db.from('categories').insert(snap.categories.map(nom=>({nom})));
+    }
+    if(snap.budgetLines){
+      for(const l of snap.budgetLines) await db.from('budget_lines').upsert(l,{onConflict:'id'});
+    }
+    if(snap.depenses){
+      await db.from('depenses').upsert({id:1,data:JSON.stringify(snap.depenses)},{onConflict:'id'});
+    }
+
+    await loadData();
+    renderAll();
+    setSyncStatus('ok','✓ Synchronisé');
+    alert('✅ Restauration réussie !\\n\\nUne sauvegarde de sécurité de l\\'état précédent a été créée automatiquement.');
+  } catch(e) {
+    console.error(e); setSyncStatus('error','✗ Erreur restauration');
+    alert('Erreur lors de la restauration : ' + e.message);
+  }
+}
+
+async function deleteBackup(id) {
+  if(!confirm('Supprimer cette sauvegarde ?')) return;
+  try { await db.from('backups').delete().eq('id',id); renderBackupList(); }
+  catch(e) { console.error(e); }
+}
+
+function initBackupPreferences() {
+  const saved = localStorage.getItem('autoBackupEnabled');
+  const savedMin = parseInt(localStorage.getItem('autoBackupMinutes')) || 30;
+  autoBackupMinutes = savedMin;
+  const sel = $('autoBackupInterval'); if(sel) sel.value = String(savedMin);
+  const lbl = $('autoIntervalLabel'); if(lbl) lbl.textContent = savedMin < 60 ? `${savedMin} min` : `${savedMin/60} h`;
+  if(saved === '1') {
+    const toggle = $('autoBackupToggle'); if(toggle){ toggle.checked = true; }
+    autoBackupActive = true;
+    startAutoBackup();
+  }
+}
+
 // ══ RENDER ALL ══
 function renderAll(){
   renderCategories();renderGuestsTable();renderCivilTable();renderReligTable();
-  renderSynthese();renderBudget();renderDepenses();
+  renderSynthese();renderBudget();renderDepenses();renderBackupList();
 }
 </script>
 </body>
