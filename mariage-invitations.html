@@ -1638,7 +1638,7 @@ async function renderBackupList() {
       .order('created_at', {ascending:false}).limit(20);
     if(error) throw error;
     if(!backups || backups.length === 0) {
-      container.innerHTML = '<div style="text-align:center;color:var(--muted);padding:32px;font-size:13px;">Aucune sauvegarde pour l\\'instant.<br>Cliquez sur 💾 Sauvegarder pour créer la première.</div>';
+      container.innerHTML = '<div style="text-align:center;color:var(--muted);padding:32px;font-size:13px;">Aucune sauvegarde pour l\'instant.<br>Cliquez sur 💾 Sauvegarder pour créer la première.</div>';
       return;
     }
     container.innerHTML = backups.map(b => {
@@ -1656,7 +1656,7 @@ async function renderBackupList() {
         </div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-secondary btn-sm" onclick="previewBackup('${b.id}')" title="Voir le contenu">👁️ Aperçu</button>
-          <button class="btn btn-danger btn-sm" onclick="restoreBackup('${b.id}','${formatDate(b.created_at).replace(/'/g,"\\\\'")}')" title="Restaurer">↺ Restaurer</button>
+          <button class="btn btn-danger btn-sm" onclick="restoreBackup('${b.id}','${formatDate(b.created_at).replace(/'/g,"\\'")}')" title="Restaurer">↺ Restaurer</button>
           <button class="btn btn-outline btn-sm" onclick="deleteBackup('${b.id}')" title="Supprimer">🗑️</button>
         </div>
       </div>`;
@@ -1672,16 +1672,16 @@ async function previewBackup(id) {
   if(!data) return;
   const snap = JSON.parse(data.data);
   const depTotal = snap.depenses?.reduce((s,c)=>s+c.sousCategories.reduce((ss,sc)=>ss+(sc.montant||0),0),0)||0;
-  alert(`📋 Aperçu — ${formatDate(data.created_at)}\\n\\n`
-    + `👥 Invités : ${snap.guests?.length||0}\\n`
-    + `🏷️ Catégories : ${snap.categories?.join(', ')||'—'}\\n`
-    + `💰 Lignes budget repas : ${snap.budgetLines?.length||0}\\n`
-    + `📋 Postes dépenses : ${snap.depenses?.reduce((s,c)=>s+c.sousCategories.length,0)||0}\\n`
+  alert(`📋 Aperçu — ${formatDate(data.created_at)}\n\n`
+    + `👥 Invités : ${snap.guests?.length||0}\n`
+    + `🏷️ Catégories : ${snap.categories?.join(', ')||'—'}\n`
+    + `💰 Lignes budget repas : ${snap.budgetLines?.length||0}\n`
+    + `📋 Postes dépenses : ${snap.depenses?.reduce((s,c)=>s+c.sousCategories.length,0)||0}\n`
     + `💶 Total dépenses : ${depTotal.toLocaleString('fr-FR')} €`);
 }
 
 async function restoreBackup(id, dateLabel) {
-  if(!confirm(`⚠️ Restaurer la sauvegarde du :\\n${dateLabel}\\n\\nCela remplacera toutes les données actuelles.\\nCette action est irréversible.\\n\\nConfirmer ?`)) return;
+  if(!confirm(`⚠️ Restaurer la sauvegarde du :\n${dateLabel}\n\nCela remplacera toutes les données actuelles.\nCette action est irréversible.\n\nConfirmer ?`)) return;
   setSyncStatus('syncing','⏳ Restauration…');
   try {
     const { data } = await db.from('backups').select('data').eq('id',id).single();
@@ -1710,7 +1710,7 @@ async function restoreBackup(id, dateLabel) {
     await loadData();
     renderAll();
     setSyncStatus('ok','✓ Synchronisé');
-    alert('✅ Restauration réussie !\\n\\nUne sauvegarde de sécurité de l\\'état précédent a été créée automatiquement.');
+    alert('✅ Restauration réussie !\n\nUne sauvegarde de sécurité de l\'état précédent a été créée automatiquement.');
   } catch(e) {
     console.error(e); setSyncStatus('error','✗ Erreur restauration');
     alert('Erreur lors de la restauration : ' + e.message);
