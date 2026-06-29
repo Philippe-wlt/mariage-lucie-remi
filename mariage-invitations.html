@@ -752,16 +752,17 @@ async function removeCategory(i){
 }
 
 // ══ INVITÉS ══
-// Génère un UUID v4 aléatoire — probabilité de collision quasi nulle (~1 sur 10^36)
-// Évite les doublons d'id si deux utilisateurs ajoutent un invité au même moment.
-function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-  });
+// Génère un identifiant numérique unique, compatible avec la colonne "id" (int8) de Supabase.
+// Combine l'horodatage en millisecondes (13 chiffres) + 3 chiffres aléatoires.
+// Cela évite les doublons même si deux utilisateurs ajoutent un invité à la même milliseconde,
+// tout en restant un nombre entier valide pour la base de données.
+function generateUniqueId() {
+  const timestamp = Date.now();                          // ex: 1751234567890 (13 chiffres)
+  const random     = Math.floor(Math.random()*900)+100;  // 3 chiffres aléatoires (100-999)
+  return Number(`${timestamp}${random}`);                 // ex: 1751234567890123
 }
 function makeGuest(nom,cat,nb,civil_inv,relig_type){
-  return{id:generateUUID(),nom,cat,nb:parseInt(nb)||1,civil_inv,civil_rep:null,civil_repondu:false,
+  return{id:generateUniqueId(),nom,cat,nb:parseInt(nb)||1,civil_inv,civil_rep:null,civil_repondu:false,
     relig_type,relig_remise:false,relig_repondu:false,relig_rep_vh:null,relig_rep_repas:null,menus_enfant:0,menus_adulte:0};
 }
 async function addGuest(){
@@ -782,7 +783,7 @@ async function clearAllGuests(){
   // Suppression en base
   setSyncStatus('syncing','⏳ Suppression…');
   try{
-    await db.from('guests').delete().neq('id','00000000-0000-0000-0000-000000000000');
+    await db.from('guests').delete().neq('id',0);
     state.guests=[];
     setSyncStatus('ok','✓ Synchronisé');
     renderAll();
@@ -1692,7 +1693,7 @@ async function restoreBackup(id, dateLabel) {
       data: JSON.stringify(buildSnapshot())
     });
 
-    await db.from('guests').delete().neq('id','00000000-0000-0000-0000-000000000000');
+    await db.from('guests').delete().neq('id',0);
     for(const g of (snap.guests||[])) await db.from('guests').upsert(g,{onConflict:'id'});
 
     if(snap.categories){
