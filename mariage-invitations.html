@@ -148,6 +148,7 @@
     <button class="nav-btn" onclick="showPanel('budget',this)">💰 Budget</button>
     <button class="nav-btn" onclick="showPanel('budget_detail',this)">📋 Dépenses</button>
     <button class="nav-btn" onclick="showPanel('reglements',this)">💳 Règlements</button>
+    <button class="nav-btn" onclick="showPanel('tables',this)">🪑 Plan de table</button>
     <button class="nav-btn" onclick="showPanel('categories',this)">🏷️ Catégories invités</button>
     <button class="nav-btn" onclick="showPanel('import',this)">📥 Import Excel</button>
     <button class="nav-btn" onclick="showPanel('export',this)">📤 Export Excel</button>
@@ -425,6 +426,48 @@
         <div id="regSynthesePostes"></div>
       </div>
 
+    </div>
+
+    <!-- ══ PLAN DE TABLE ══ -->
+    <div class="panel" id="panel-tables">
+      <div class="section-title">Plan de <em>table</em></div>
+      <div class="section-sub">Affectez vos invités aux tables du repas</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+
+        <!-- Colonne gauche : invités à placer -->
+        <div>
+          <div class="card">
+            <div class="card-title">👥 Invités à placer
+              <span id="tablesNonPlacesCount" style="font-family:'Jost',sans-serif;font-size:13px;color:var(--muted);font-weight:400;margin-left:4px;"></span>
+            </div>
+            <div class="filter-bar" style="margin-bottom:12px;">
+              <input type="text" id="tableSearchInv" placeholder="🔍 Rechercher…" oninput="renderTables()" style="width:160px;">
+              <select id="tableFilterCat" onchange="renderTables()"><option value="">Toutes catégories</option></select>
+            </div>
+            <div id="tablesInvitesList" style="max-height:1000px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;"></div>
+          </div>
+        </div>
+
+        <!-- Colonne droite : tables créées -->
+        <div>
+          <!-- Créer une table -->
+          <div class="card" style="margin-bottom:16px;">
+            <div class="card-title" style="font-size:17px;">➕ Créer une table</div>
+            <div style="display:flex;gap:10px;align-items:flex-end;">
+              <div class="form-group" style="flex:1;">
+                <label>Nom de la table</label>
+                <input type="text" id="newTableName" placeholder="ex: Table des mariés, Table 1…"
+                  onkeydown="if(event.key==='Enter')addTable()">
+              </div>
+              <button class="btn btn-primary" onclick="addTable()">Créer</button>
+            </div>
+          </div>
+          <!-- Liste des tables -->
+          <div id="tablesList"></div>
+        </div>
+
+      </div>
     </div>
 
     <!-- ══ CATÉGORIES INVITÉS ══ -->
@@ -761,7 +804,9 @@ let state = {
   // Règlements : [{id, catNom, subNom, montant, payeur, date, note}]
   // Stockés en JSON dans table "reglements" (id=1, data TEXT) — même principe que depenses
   reglements: [],
-  regNextId: 1
+  regNextId: 1,
+  tables: [],
+  tableNextId: 1
 };
 
 // ══ INIT ══
@@ -789,12 +834,13 @@ function setSyncStatus(type, text) {
 async function loadData() {
   setSyncStatus('syncing','⏳ Chargement…');
   try {
-    const [{data:guests},{data:cats},{data:budgets},{data:depenses},{data:reglements}] = await Promise.all([
+    const [{data:guests},{data:cats},{data:budgets},{data:depenses},{data:reglements},{data:tablesData}] = await Promise.all([
       db.from('guests').select('*'),
       db.from('categories').select('*').order('nom'),
       db.from('budget_lines').select('*').order('id'),
       db.from('depenses').select('*').order('id'),
-      db.from('reglements').select('*').order('id')
+      db.from('reglements').select('*').order('id'),
+      db.from('tables').select('*').order('id')
     ]);
     if(guests&&guests.length){state.guests=guests;}
     if(cats&&cats.length) state.categories=cats.map(c=>c.nom);
@@ -824,6 +870,9 @@ async function loadData() {
     }
     if(reglements&&reglements.length){
       try{ const r=JSON.parse(reglements[0].data); if(r&&Array.isArray(r)){ state.reglements=r; if(r.length) state.regNextId=Math.max(...r.map(x=>x.id))+1; } }catch(e){}
+    }
+    if(tablesData&&tablesData.length){
+      try{ const t=JSON.parse(tablesData[0].data); if(t&&Array.isArray(t)){ state.tables=t; if(t.length) state.tableNextId=Math.max(...t.map(x=>x.id))+1; } }catch(e){}
     }
     setSyncStatus('ok','✓ Synchronisé');
   } catch(e){ console.error(e); setSyncStatus('error','✗ Erreur connexion'); }
@@ -2240,10 +2289,184 @@ function formatRegDate(d) {
   return `${j}/${m}/${y}`;
 }
 
+// ════════════════════════════════════════════════════════
+// PLAN DE TABLE
+// Affectation des invités (répondants au repas ou non-exclus)
+// à des tables nommées.
+// Structure state.tables : [{id, nom, places:[{guestId, guestNom, guestCat, nb}]}]
+// Stocké en JSON dans la table "tables" de Supabase (id=1).
+// ════════════════════════════════════════════════════════
+
+async function dbSaveTables() {
+  setSyncStatus('syncing','⏳ Sauvegarde…');
+  try {
+    await db.from('tables').upsert({id:1, data:JSON.stringify(state.tables)},{onConflict:'id'});
+    setSyncStatus('ok','✓ Synchronisé');
+  } catch(e){ console.error(e); setSyncStatus('error','✗ Erreur sync'); }
+}
+
+// Retourne la liste des invités éligibles au repas (invités repas, sauf absents confirmés)
+// et non encore affectés à une table
+function guestsEligiblesRepas() {
+  // Utilise des strings pour la comparaison afin d'éviter les problèmes de type (number vs string)
+  const placed = new Set(state.tables.flatMap(t=>t.places.map(p=>String(p.guestId))));
+  return sortGuests(
+    state.guests.filter(g =>
+      g.relig_type === 'repas' &&        // invités au repas
+      g.relig_rep_repas !== 'non' &&     // pas absents confirmés
+      !placed.has(String(g.id))          // pas encore placés
+    )
+  );
+}
+
+// Ajoute une nouvelle table
+async function addTable() {
+  const nom = $('newTableName')?.value.trim();
+  if(!nom) return alert('Veuillez saisir un nom de table.');
+  state.tables.push({ id: state.tableNextId++, nom, places: [] });
+  $('newTableName').value = '';
+  await dbSaveTables();
+  renderTables();
+}
+
+// Supprime une table (remet les invités dans la liste)
+async function deleteTable(tableId) {
+  if(!confirm('Supprimer cette table ? Les invités affectés seront remis dans la liste.')) return;
+  state.tables = state.tables.filter(t => t.id !== tableId);
+  await dbSaveTables();
+  renderTables();
+}
+
+// Renomme une table
+async function renameTable(tableId, val) {
+  const t = state.tables.find(t=>t.id===tableId);
+  if(t){ t.nom = val; await dbSaveTables(); }
+}
+
+// Affecte un invité à une table
+async function assignToTable(guestId, tableId) {
+  // Normalise les types : les ids peuvent arriver en string depuis le HTML
+  const gid = isNaN(guestId) ? guestId : Number(guestId);
+  const tid = Number(tableId);
+  const g = state.guests.find(x=>x.id===gid || String(x.id)===String(gid));
+  const t = state.tables.find(x=>x.id===tid);
+  if(!g||!t) { console.warn('assignToTable: invité ou table introuvable', gid, tid); return; }
+  // Vérifie qu'il n'est pas déjà placé
+  if(state.tables.some(tb=>tb.places.some(p=>String(p.guestId)===String(gid)))) return;
+  t.places.push({ guestId: g.id, guestNom: g.nom, guestCat: g.cat, nb: g.nb });
+  await dbSaveTables();
+  renderTables();
+}
+
+// Retire un invité d'une table
+async function removeFromTable(tableId, guestId) {
+  const t = state.tables.find(x=>x.id===Number(tableId));
+  if(!t) return;
+  t.places = t.places.filter(p=>String(p.guestId)!==String(guestId));
+  await dbSaveTables();
+  renderTables();
+}
+
+// Rendu complet du panneau plan de table
+function renderTables() {
+  // ── Filtres select catégorie ──
+  const catEl = $('tableFilterCat');
+  if(catEl && catEl.innerHTML === '<option value="">Toutes catégories</option>') {
+    catEl.innerHTML = '<option value="">Toutes catégories</option>'
+      + state.categories.map(c=>`<option value="${c}">${c}</option>`).join('');
+  }
+
+  const search = $('tableSearchInv')?.value.toLowerCase()||'';
+  const catFilter = $('tableFilterCat')?.value||'';
+
+  // ── Liste invités à placer ──
+  const eligibles = guestsEligiblesRepas();
+  const filtered = eligibles.filter(g=>
+    (!search || g.nom.toLowerCase().includes(search)) &&
+    (!catFilter || g.cat === catFilter)
+  );
+
+  const countEl = $('tablesNonPlacesCount');
+  if(countEl) countEl.textContent = `— ${eligibles.length} à placer`;
+
+  const listEl = $('tablesInvitesList');
+  if(listEl) {
+    if(!filtered.length) {
+      listEl.innerHTML = `<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px;">${
+        eligibles.length === 0 ? '✓ Tous les invités sont placés !' : 'Aucun résultat pour ces filtres.'
+      }</div>`;
+    } else {
+      // Groupé par catégorie
+      const byCat = {};
+      filtered.forEach(g=>{ if(!byCat[g.cat]) byCat[g.cat]=[]; byCat[g.cat].push(g); });
+      listEl.innerHTML = Object.entries(byCat).map(([cat, guests])=>`
+        <div style="background:var(--gold-pale);padding:6px 14px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--border);">${cat}</div>
+        ${guests.map(g=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);gap:8px;">
+            <div>
+              <span style="font-size:13px;font-weight:500;">${g.nom}</span>
+              <span style="font-size:11px;color:var(--muted);margin-left:6px;">${g.nb} pers.</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <select class="cell-select" id="selectTable_${g.id}" style="font-size:12px;max-width:130px;">
+                <option value="">— Table —</option>
+                ${state.tables.map(t=>`<option value="${t.id}">${t.nom}</option>`).join('')}
+              </select>
+              <button class="btn btn-primary btn-sm" onclick="assignFromSelect('${g.id}')" style="padding:5px 10px;">→</button>
+            </div>
+          </div>`).join('')}
+      `).join('');
+    }
+  }
+
+  // ── Liste des tables ──
+  const tablesEl = $('tablesList');
+  if(!tablesEl) return;
+  if(!state.tables.length) {
+    tablesEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px;">Aucune table créée.<br>Utilisez le formulaire ci-dessus pour créer votre première table.</div>';
+    return;
+  }
+
+  tablesEl.innerHTML = state.tables.map(t=>{
+    const total = t.places.reduce((s,p)=>s+p.nb,0);
+    return `<div class="card" style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+        <input style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:500;color:var(--dark);border:none;background:transparent;flex:1;min-width:150px;"
+          value="${t.nom}" onchange="renameTable(${t.id},this.value)" title="Cliquer pour renommer">
+        <span style="font-size:12px;color:var(--muted);">${t.places.length} groupe(s) · ${total} pers.</span>
+        <button class="btn btn-danger btn-sm" onclick="deleteTable(${t.id})">🗑️ Supprimer</button>
+      </div>
+      ${t.places.length === 0
+        ? `<div style="text-align:center;color:var(--muted);font-size:13px;padding:12px;">Table vide — affectez des invités depuis la liste de gauche.</div>`
+        : `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+            ${t.places.map((p,i)=>`
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:${i<t.places.length-1?'1px solid var(--border)':'none'};background:${i%2===0?'var(--white)':'var(--cream)'};">
+                <div>
+                  <span style="font-size:13px;font-weight:500;">${p.guestNom}</span>
+                  <span class="status-badge status-attente" style="margin-left:8px;font-size:10px;">${p.guestCat}</span>
+                  <span style="font-size:11px;color:var(--muted);margin-left:6px;">${p.nb} pers.</span>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="removeFromTable(${t.id},'${p.guestId}')" title="Retirer de la table" style="font-size:11px;">✕ Retirer</button>
+              </div>`).join('')}
+          </div>`
+      }
+    </div>`;
+  }).join('');
+}
+
+// Affecte l'invité depuis le select inline de la liste
+function assignFromSelect(guestId) {
+  const el = $(`selectTable_${guestId}`);
+  if(!el) return;
+  const tableId = el.value;
+  if(!tableId) return alert('Veuillez choisir une table dans le menu déroulant.');
+  assignToTable(guestId, tableId);
+}
+
 // ══ RENDER ALL ══
 function renderAll(){
   renderCategories();renderGuestsTable();renderCivilTable();renderReligTable();
-  renderSynthese();renderBudget();renderDepenses();renderReglements();renderBackupList();
+  renderSynthese();renderBudget();renderDepenses();renderReglements();renderTables();renderBackupList();
 }
 </script>
 </body>
