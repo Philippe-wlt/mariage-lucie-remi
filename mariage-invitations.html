@@ -89,6 +89,8 @@
   .list-people li:last-child{border-bottom:none;}
   .list-people li .cat{color:var(--muted);font-size:12px;}
   .num-input{width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:'Jost',sans-serif;}
+  input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+  input[type=number]{-moz-appearance:textfield;}
   .num-input:focus{outline:none;border-color:var(--gold);}
   /* Budget élargi */
   .budget-cat-header{background:var(--dark);color:var(--gold-light);font-family:'Cormorant Garamond',serif;font-size:16px;padding:10px 16px;border-radius:6px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;}
@@ -145,6 +147,7 @@
     <button class="nav-btn" onclick="showPanel('religieux',this)">⛪ Religieux</button>
     <button class="nav-btn" onclick="showPanel('budget',this)">💰 Budget</button>
     <button class="nav-btn" onclick="showPanel('budget_detail',this)">📋 Dépenses</button>
+    <button class="nav-btn" onclick="showPanel('reglements',this)">💳 Règlements</button>
     <button class="nav-btn" onclick="showPanel('categories',this)">🏷️ Catégories invités</button>
     <button class="nav-btn" onclick="showPanel('import',this)">📥 Import Excel</button>
     <button class="nav-btn" onclick="showPanel('export',this)">📤 Export Excel</button>
@@ -309,23 +312,23 @@
       <div class="section-title">Suivi des <em>Dépenses</em></div>
       <div class="section-sub">Gérez toutes vos dépenses par catégorie et consultez le récapitulatif complet</div>
 
-      <div class="two-col">
-        <!-- Colonne gauche : gestion des catégories/postes -->
+      <div style="display:grid;grid-template-columns:1fr 2fr;gap:24px;margin-bottom:24px;">
+        <!-- Colonne gauche (étroite) : gestion des catégories/postes -->
         <div>
           <div class="card">
-            <div class="card-title">⚙️ Gérer les catégories de dépenses</div>
+            <div class="card-title" style="font-size:17px;">⚙️ Catégories</div>
             <div id="depCatManager"></div>
             <hr class="divider">
             <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
-              <div class="form-group" style="flex:1;min-width:150px;">
+              <div class="form-group" style="flex:1;min-width:120px;">
                 <label>Nouvelle catégorie</label>
                 <input type="text" id="newDepCat" placeholder="ex: Transport">
               </div>
-              <button class="btn btn-primary" onclick="addDepCat()">Ajouter</button>
+              <button class="btn btn-primary btn-sm" onclick="addDepCat()">+ Ajouter</button>
             </div>
           </div>
         </div>
-        <!-- Colonne droite : saisie des montants -->
+        <!-- Colonne droite (large) : saisie des montants -->
         <div>
           <div class="card">
             <div class="card-title">✏️ Saisir les montants</div>
@@ -339,6 +342,89 @@
         <div class="card-title">📊 Récapitulatif global</div>
         <div id="depRecap"></div>
       </div>
+    </div>
+
+    <!-- ══ RÈGLEMENTS ══ -->
+    <div class="panel" id="panel-reglements">
+      <div class="section-title">Suivi des <em>Règlements</em></div>
+      <div class="section-sub">Enregistrez les paiements effectués par catégorie — plusieurs règlements possibles par poste</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
+
+        <!-- Saisie d'un nouveau règlement -->
+        <div class="card">
+          <div class="card-title">➕ Ajouter un règlement</div>
+          <div class="form-group" style="margin-bottom:12px;">
+            <label>Catégorie de dépense</label>
+            <select id="reg_cat" onchange="updateRegSubCat()"></select>
+          </div>
+          <div class="form-group" style="margin-bottom:12px;">
+            <label>Sous-catégorie (poste)</label>
+            <select id="reg_subcat"></select>
+          </div>
+          <div class="form-group" style="margin-bottom:12px;">
+            <label>Montant payé (€)</label>
+            <input type="text" inputmode="decimal" id="reg_montant" placeholder="0" style="text-align:right;" onwheel="this.blur()">
+          </div>
+          <div class="form-group" style="margin-bottom:12px;">
+            <label>Payé par</label>
+            <select id="reg_payeur"></select>
+          </div>
+          <div class="form-group" style="margin-bottom:16px;">
+            <label>Date du paiement</label>
+            <input type="date" id="reg_date">
+          </div>
+          <div class="form-group" style="margin-bottom:16px;">
+            <label>Note (optionnel)</label>
+            <input type="text" id="reg_note" placeholder="ex: acompte, solde, chèque…">
+          </div>
+          <button class="btn btn-primary" onclick="addReglement()">✦ Enregistrer le règlement</button>
+        </div>
+
+        <!-- Synthèse par personne -->
+        <div class="card">
+          <div class="card-title">👤 Total payé par personne</div>
+          <div id="regSynthesePersonne"></div>
+        </div>
+
+      </div>
+
+      <!-- Liste de tous les règlements -->
+      <div class="card">
+        <div class="card-title">📋 Historique des règlements</div>
+        <div class="filter-bar" style="margin-bottom:12px;">
+          <select id="filterRegCat" onchange="renderReglements()">
+            <option value="">Toutes catégories</option>
+          </select>
+          <select id="filterRegPayeur" onchange="renderReglements()">
+            <option value="">Tous les payeurs</option>
+          </select>
+          <span id="regTotal" style="margin-left:auto;font-weight:500;font-size:14px;color:var(--gold);"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Catégorie</th>
+                <th>Poste</th>
+                <th>Payeur</th>
+                <th>Note</th>
+                <th style="text-align:right;">Montant</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="reglementsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Synthèse par poste (prévu vs payé) -->
+      <div class="card">
+        <div class="card-title">📊 Avancement par poste budgétaire</div>
+        <div id="regSynthesePostes"></div>
+      </div>
+
     </div>
 
     <!-- ══ CATÉGORIES INVITÉS ══ -->
@@ -570,6 +656,44 @@
   </div><!-- /main -->
 </div><!-- /appScreen -->
 
+<!-- MODAL EDIT RÈGLEMENT -->
+<div class="modal-overlay" id="modalReglement">
+  <div class="modal">
+    <div class="modal-title">✏️ Modifier le règlement</div>
+    <input type="hidden" id="editRegId">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Catégorie</label>
+        <select id="editReg_cat" onchange="updateEditRegSubCat()"></select>
+      </div>
+      <div class="form-group">
+        <label>Poste</label>
+        <select id="editReg_subcat"></select>
+      </div>
+      <div class="form-group">
+        <label>Montant (€)</label>
+        <input type="text" inputmode="decimal" id="editReg_montant" style="text-align:right;" onwheel="this.blur()">
+      </div>
+      <div class="form-group">
+        <label>Payé par</label>
+        <select id="editReg_payeur"></select>
+      </div>
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="editReg_date">
+      </div>
+      <div class="form-group">
+        <label>Note</label>
+        <input type="text" id="editReg_note" placeholder="ex: acompte, solde…">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('modalReglement')">Annuler</button>
+      <button class="btn btn-primary" onclick="saveEditReglement()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL EDIT GUEST -->
 <div class="modal-overlay" id="modalGuest">
   <div class="modal">
@@ -625,14 +749,29 @@ let state = {
     ]},
     {id:5, nom:'Papeterie', sousCategories:[
       {id:501,nom:'Faire-parts',montant:0},{id:502,nom:'Timbres',montant:0}
+    ]},
+    {id:6, nom:'Restauration', sousCategories:[
+      {id:601,nom:'Vin d\'honneur',montant:0,lieBudget:'vh'},
+      {id:602,nom:'Repas adultes',montant:0,lieBudget:'repasA'},
+      {id:603,nom:'Repas enfants',montant:0,lieBudget:'repasE'}
     ]}
   ],
-  depNextCatId: 6,
-  depNextSubId: 600
+  depNextCatId: 7,
+  depNextSubId: 700,
+  // Règlements : [{id, catNom, subNom, montant, payeur, date, note}]
+  // Stockés en JSON dans table "reglements" (id=1, data TEXT) — même principe que depenses
+  reglements: [],
+  regNextId: 1
 };
 
 // ══ INIT ══
 window.onload = async function() {
+  // Bloque le scroll de la molette sur tous les champs numériques
+  // pour éviter de modifier involontairement une valeur en faisant défiler la page
+  document.addEventListener('wheel', e => {
+    if(document.activeElement.type === 'number') document.activeElement.blur();
+  }, {passive:true});
+
   db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   await loadData();
   renderAll();
@@ -650,17 +789,41 @@ function setSyncStatus(type, text) {
 async function loadData() {
   setSyncStatus('syncing','⏳ Chargement…');
   try {
-    const [{data:guests},{data:cats},{data:budgets},{data:depenses}] = await Promise.all([
+    const [{data:guests},{data:cats},{data:budgets},{data:depenses},{data:reglements}] = await Promise.all([
       db.from('guests').select('*'),
       db.from('categories').select('*').order('nom'),
       db.from('budget_lines').select('*').order('id'),
-      db.from('depenses').select('*').order('id')
+      db.from('depenses').select('*').order('id'),
+      db.from('reglements').select('*').order('id')
     ]);
     if(guests&&guests.length){state.guests=guests;}
     if(cats&&cats.length) state.categories=cats.map(c=>c.nom);
     if(budgets&&budgets.length){state.budgetLines=budgets;state.budgetNextId=Math.max(...budgets.map(b=>b.id))+1;}
     if(depenses&&depenses.length){
-      try{ const d=JSON.parse(depenses[0].data); if(d&&d.length) state.depenses=d; }catch(e){}
+      try{
+        const d=JSON.parse(depenses[0].data);
+        if(d&&d.length){
+          state.depenses=d;
+          // Migration : ajoute la catégorie Restauration si elle n'existe pas encore
+          const hasRestauration = d.some(c=>c.nom==='Restauration'||c.sousCategories?.some(sc=>sc.lieBudget));
+          if(!hasRestauration){
+            state.depenses.push({
+              id: Math.max(...d.map(c=>c.id),0)+1,
+              nom:'Restauration',
+              sousCategories:[
+                {id:Date.now()+1, nom:"Vin d'honneur",   montant:0, lieBudget:'vh'},
+                {id:Date.now()+2, nom:'Repas adultes',   montant:0, lieBudget:'repasA'},
+                {id:Date.now()+3, nom:'Repas enfants',   montant:0, lieBudget:'repasE'}
+              ]
+            });
+            // Sauvegarde immédiate de la migration
+            setTimeout(()=>dbSaveDepenses(),500);
+          }
+        }
+      }catch(e){}
+    }
+    if(reglements&&reglements.length){
+      try{ const r=JSON.parse(reglements[0].data); if(r&&Array.isArray(r)){ state.reglements=r; if(r.length) state.regNextId=Math.max(...r.map(x=>x.id))+1; } }catch(e){}
     }
     setSyncStatus('ok','✓ Synchronisé');
   } catch(e){ console.error(e); setSyncStatus('error','✗ Erreur connexion'); }
@@ -708,6 +871,14 @@ async function dbSaveDepenses() {
   setSyncStatus('syncing','⏳ Sauvegarde…');
   try{
     await db.from('depenses').upsert({id:1,data:JSON.stringify(state.depenses)},{onConflict:'id'});
+    setSyncStatus('ok','✓ Synchronisé');
+  }catch(e){console.error(e);setSyncStatus('error','✗ Erreur sync');}
+}
+
+async function dbSaveReglements() {
+  setSyncStatus('syncing','⏳ Sauvegarde…');
+  try{
+    await db.from('reglements').upsert({id:1,data:JSON.stringify(state.reglements)},{onConflict:'id'});
     setSyncStatus('ok','✓ Synchronisé');
   }catch(e){console.error(e);setSyncStatus('error','✗ Erreur sync');}
 }
@@ -1031,7 +1202,43 @@ async function updateBudgetLabel(id,val){const l=state.budgetLines.find(x=>x.id=
 async function updateBudgetAmount(id,val){const l=state.budgetLines.find(x=>x.id===id);if(l){l.amount=val;await dbSaveBudgetLine(l);renderBudget();}}
 
 // ══ DÉPENSES DÉTAILLÉES ══
+// Synchronise les montants Restauration (VH + repas) depuis la feuille Budget Repas.
+// Les postes liés au budget (lieBudget = 'vh'/'repasA'/'repasE') voient leur montant
+// recalculé automatiquement à chaque affichage — ils ne sont pas modifiables manuellement.
+function syncBudgetToDepenses() {
+  const gs = state.guests;
+
+  // Tarifs unitaires depuis les lignes budget
+  const tarifVH   = state.budgetLines.find(l=>l.label.toLowerCase().includes('vin')||l.label.toLowerCase().includes('honneur'))?.amount||0;
+  const tarifRA   = state.budgetLines.find(l=>l.label.toLowerCase().includes('adulte'))?.amount||0;
+  const tarifRE   = state.budgetLines.find(l=>l.label.toLowerCase().includes('enfant'))?.amount||0;
+
+  // Nombres : estimation max (invités - absents confirmés)
+  const vhInv     = gs.filter(g=>g.relig_type==='vh'||g.relig_type==='repas').reduce((s,g)=>s+g.nb,0);
+  const vhNon     = gs.filter(g=>(g.relig_type==='vh'||g.relig_type==='repas')&&g.relig_rep_vh==='non').reduce((s,g)=>s+g.nb,0);
+  const repasInv  = gs.filter(g=>g.relig_type==='repas').reduce((s,g)=>s+g.nb,0);
+  const repasNon  = gs.filter(g=>g.relig_type==='repas'&&g.relig_rep_repas==='non').reduce((s,g)=>s+g.nb,0);
+  const estVH     = vhInv - vhNon;
+  const estRepas  = repasInv - repasNon;
+
+  // Met à jour les montants des postes liés au budget dans state.depenses
+  state.depenses.forEach(cat=>{
+    cat.sousCategories.forEach(sc=>{
+      if(sc.lieBudget==='vh')     sc.montant = estVH    * tarifVH;
+      if(sc.lieBudget==='repasA') sc.montant = estRepas * tarifRA;
+      // Repas enfants : seulement si au moins un menu enfant a été saisi
+      if(sc.lieBudget==='repasE') {
+        const totalMenusEnfants = gs.filter(g=>g.relig_type==='repas').reduce((s,g)=>s+(g.menus_enfant||0),0);
+        sc.montant = totalMenusEnfants > 0 ? totalMenusEnfants * tarifRE : 0;
+      }
+    });
+  });
+}
+
 function renderDepenses(){
+  // Synchronise d'abord les montants repas/VH depuis la feuille Budget
+  syncBudgetToDepenses();
+
   const manager=$('depCatManager');
   const saisie=$('depSaisie');
   const recap=$('depRecap');
@@ -1069,27 +1276,33 @@ function renderDepenses(){
       </div>
       ${cat.sousCategories.map(sc=>{
         const isdef=(sc.statut==='definitif');
-        return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
-          <span style="font-size:13px;color:var(--text);flex:1;min-width:120px;">${sc.nom}</span>
+        const isLinked=!!sc.lieBudget; // Poste lié au budget repas — calculé automatiquement
+        return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;${isLinked?'background:var(--gold-pale);margin:0 -4px;padding:8px 4px;border-radius:4px;':''}">
+          <span style="font-size:13px;color:var(--text);flex:1;min-width:120px;">
+            ${sc.nom}
+            ${isLinked?'<span style="font-size:10px;color:var(--gold);margin-left:6px;text-transform:uppercase;letter-spacing:0.5px;">⟳ Budget auto</span>':''}
+          </span>
           <div style="display:flex;align-items:center;gap:6px;">
-            <input class="num-input" type="number" min="0" step="any" style="width:100px;"
-              value="${sc.montant||0}"
-              onchange="updateDepMontant(${cat.id},${sc.id},parseFloat(this.value)||0)">
-            <span style="font-size:12px;color:var(--muted);">€</span>
+            ${isLinked
+              ? `<span style="font-weight:500;font-size:14px;color:var(--gold);min-width:100px;text-align:right;">${(sc.montant||0).toLocaleString('fr-FR')} €</span>`
+              : `<input class="num-input" type="number" min="0" step="any" style="width:100px;"
+                  value="${sc.montant||0}"
+                  onchange="updateDepMontant(${cat.id},${sc.id},parseFloat(this.value)||0)">
+                <span style="font-size:12px;color:var(--muted);">€</span>`
+            }
           </div>
-          <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;font-size:11px;">
-            <button onclick="updateDepStatut(${cat.id},${sc.id},'estime')"
-              style="padding:5px 10px;border:none;cursor:pointer;font-family:'Jost',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.5px;transition:all 0.15s;
-              background:${!isdef?'#fff3cd':'var(--white)'};color:${!isdef?'#856404':'var(--muted)'};
-              border-right:1px solid var(--border);">
-              〜 Estimé
-            </button>
-            <button onclick="updateDepStatut(${cat.id},${sc.id},'definitif')"
-              style="padding:5px 10px;border:none;cursor:pointer;font-family:'Jost',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.5px;transition:all 0.15s;
-              background:${isdef?'var(--green-light)':'var(--white)'};color:${isdef?'var(--green)':'var(--muted)'};">
-              ✓ Définitif
-            </button>
-          </div>
+          ${isLinked
+            ? `<span style="font-size:11px;color:var(--muted);">Calculé depuis la feuille Budget</span>`
+            : `<div style="display:flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;font-size:11px;">
+                <button onclick="updateDepStatut(${cat.id},${sc.id},'estime')"
+                  style="padding:5px 10px;border:none;cursor:pointer;font-family:'Jost',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.5px;transition:all 0.15s;
+                  background:${!isdef?'#fff3cd':'var(--white)'};color:${!isdef?'#856404':'var(--muted)'};
+                  border-right:1px solid var(--border);">〜 Estimé</button>
+                <button onclick="updateDepStatut(${cat.id},${sc.id},'definitif')"
+                  style="padding:5px 10px;border:none;cursor:pointer;font-family:'Jost',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.5px;transition:all 0.15s;
+                  background:${isdef?'var(--green-light)':'var(--white)'};color:${isdef?'var(--green)':'var(--muted)'};">✓ Définitif</button>
+              </div>`
+          }
         </div>`;}).join('')}
     </div>`).join('');
 
@@ -1121,6 +1334,9 @@ function renderDepenses(){
   state.depenses.forEach(cat=>{
     let catDef=0,catEst=0;
     cat.sousCategories.forEach(sc=>{
+      // Exclut les postes liés au budget (Restauration) du total fixe —
+      // ils sont déjà comptabilisés séparément via repasEstMax / repasEstConf
+      if(sc.lieBudget) return;
       if(sc.statut==='definitif') catDef+=sc.montant||0;
       else catEst+=sc.montant||0;
     });
@@ -1134,7 +1350,7 @@ function renderDepenses(){
         <td style="text-align:right;font-weight:500;">${catEst>0?catEst.toLocaleString('fr-FR')+' €':''}</td>
         <td style="text-align:right;font-weight:500;">${catTotal.toLocaleString('fr-FR')} €</td>
       </tr>`;
-      cat.sousCategories.filter(sc=>(sc.montant||0)>0).forEach(sc=>{
+      cat.sousCategories.filter(sc=>(sc.montant||0)>0&&!sc.lieBudget).forEach(sc=>{
         const isdef=(sc.statut==='definitif');
         depRows+=`<tr>
           <td style="padding-left:24px;color:var(--muted);font-size:12px;">↳ ${sc.nom}</td>
@@ -1182,9 +1398,9 @@ function renderDepenses(){
           <th style="text-align:right;">Total</th>
         </tr></thead>
         <tbody>
-          ${depRows||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px;">Aucune dépense saisie</td></tr>'}
+          ${depRows||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px;">Aucune dépense fixe saisie</td></tr>'}
           <tr style="background:var(--relig-light);">
-            <td style="font-weight:500;">🍽️ Repas & VH <span style="font-size:11px;color:var(--muted);">(estimation max)</span></td>
+            <td style="font-weight:500;">🍽️ Restauration <span style="font-size:11px;color:var(--muted);">(VH + repas, estimation max)</span></td>
             <td style="text-align:center;"><span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">〜 Estimé</span></td>
             <td></td>
             <td style="text-align:right;font-weight:500;">${repasEstMax.toLocaleString('fr-FR')} €</td>
@@ -1204,12 +1420,12 @@ function renderDepenses(){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
       <div style="background:var(--dark);color:var(--gold-light);border-radius:10px;padding:20px 24px;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Budget total (estimation max)</div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Dont <strong style="color:var(--green-light);">${totalDef.toLocaleString('fr-FR')} € définitifs</strong> + <strong style="color:#ffc107;">${(totalEst+repasEstMax).toLocaleString('fr-FR')} € estimés</strong></div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Dépenses fixes (${(totalDef+totalEst).toLocaleString('fr-FR')} €) + restauration max (${repasEstMax.toLocaleString('fr-FR')} €)</div>
         <div style="font-family:'Cormorant Garamond',serif;font-size:34px;color:var(--gold);">${grandMax.toLocaleString('fr-FR')} €</div>
       </div>
       <div style="background:var(--green);color:white;border-radius:10px;padding:20px 24px;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Budget total (repas confirmés)</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.7);margin-bottom:10px;">Dépenses fixes + repas des réponses confirmées</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.7);margin-bottom:10px;">Dépenses fixes (${(totalDef+totalEst).toLocaleString('fr-FR')} €) + restauration confirmée (${repasEstConf.toLocaleString('fr-FR')} €)</div>
         <div style="font-family:'Cormorant Garamond',serif;font-size:34px;color:white;">${grandConf.toLocaleString('fr-FR')} €</div>
       </div>
     </div>`;
@@ -1736,10 +1952,298 @@ function initBackupPreferences() {
   }
 }
 
+// ════════════════════════════════════════════════════════
+// RÈGLEMENTS
+// Suivi des paiements effectués par catégorie de dépense.
+// Plusieurs règlements possibles par poste budgétaire.
+// Stocké en JSON dans la table "reglements" (id=1).
+// Synthèse par personne et par poste (prévu vs payé).
+// ════════════════════════════════════════════════════════
+
+// Popule les selects de la feuille Règlements
+function renderReglementsSelects() {
+  // Catégories de dépenses
+  const regCatEl = $('reg_cat');
+  if(regCatEl) {
+    const oldCat = regCatEl.value;
+    regCatEl.innerHTML = state.depenses.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
+    if(oldCat) regCatEl.value = oldCat;
+    updateRegSubCat();
+  }
+
+  // Filtre catégorie dans l'historique
+  const filterCat = $('filterRegCat');
+  if(filterCat) {
+    const old = filterCat.value;
+    filterCat.innerHTML = '<option value="">Toutes catégories</option>'
+      + state.depenses.map(c=>`<option value="${c.nom}">${c.nom}</option>`).join('');
+    filterCat.value = old||'';
+  }
+
+  // Payeur = liste des invités (triée)
+  const payeurOpts = '<option value="">-- Choisir --</option>'
+    + sortGuests(state.guests).map(g=>`<option value="${g.nom}">${g.nom}</option>`).join('');
+  const regPayeur = $('reg_payeur');
+  if(regPayeur){ const old=regPayeur.value; regPayeur.innerHTML=payeurOpts; if(old)regPayeur.value=old; }
+
+  // Filtre payeur dans l'historique
+  const filterPay = $('filterRegPayeur');
+  if(filterPay) {
+    const old = filterPay.value;
+    const payeurs = [...new Set(state.reglements.map(r=>r.payeur))].sort();
+    filterPay.innerHTML = '<option value="">Tous les payeurs</option>'
+      + payeurs.map(p=>`<option value="${p}">${p}</option>`).join('');
+    filterPay.value = old||'';
+  }
+
+  // Date par défaut = aujourd'hui
+  const regDate = $('reg_date');
+  if(regDate && !regDate.value) regDate.value = new Date().toISOString().slice(0,10);
+}
+
+// Met à jour la liste des sous-catégories selon la catégorie choisie
+function updateRegSubCat() {
+  const catId = parseInt($('reg_cat')?.value);
+  const cat = state.depenses.find(c=>c.id===catId);
+  const el = $('reg_subcat');
+  if(!el) return;
+  el.innerHTML = (cat?.sousCategories||[]).map(sc=>`<option value="${sc.id}">${sc.nom}</option>`).join('')
+    || '<option value="">Aucun poste dans cette catégorie</option>';
+}
+
+// Ajoute un nouveau règlement
+async function addReglement() {
+  const catId  = parseInt($('reg_cat')?.value);
+  const subId  = parseInt($('reg_subcat')?.value);
+  const montant = parseFloat($('reg_montant')?.value) || 0;
+  const payeur  = $('reg_payeur')?.value;
+  const date    = $('reg_date')?.value || new Date().toISOString().slice(0,10);
+  const note    = $('reg_note')?.value.trim() || '';
+
+  if(!montant)  return alert('Veuillez saisir un montant.');
+  if(!payeur)   return alert('Veuillez choisir un payeur.');
+
+  const cat = state.depenses.find(c=>c.id===catId);
+  const sub = cat?.sousCategories.find(s=>s.id===subId);
+  if(!cat||!sub) return alert('Veuillez choisir une catégorie et un poste.');
+
+  const reg = {
+    id:      state.regNextId++,
+    catId, catNom:  cat.nom,
+    subId, subNom:  sub.nom,
+    montant, payeur, date, note
+  };
+
+  state.reglements.push(reg);
+  await dbSaveReglements();
+
+  // Réinitialise le formulaire (sauf catégorie et payeur)
+  const mEl = $('reg_montant'); if(mEl) mEl.value='';
+  const nEl = $('reg_note');    if(nEl) nEl.value='';
+
+  renderReglements();
+}
+
+// Supprime un règlement
+async function deleteReglement(id) {
+  if(!confirm('Supprimer ce règlement ?')) return;
+  state.reglements = state.reglements.filter(r=>r.id!==id);
+  await dbSaveReglements();
+  renderReglements();
+}
+
+// Ouvre la modale de modification avec les valeurs actuelles du règlement
+function openEditReglement(id) {
+  const r = state.reglements.find(x=>x.id===id);
+  if(!r) return;
+  $('editRegId').value = id;
+
+  // Catégories de dépenses
+  const catEl = $('editReg_cat');
+  catEl.innerHTML = state.depenses.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
+  catEl.value = String(r.catId);
+  updateEditRegSubCat(r.subId);
+
+  // Montant, date, note
+  $('editReg_montant').value = r.montant;
+  $('editReg_date').value    = r.date;
+  $('editReg_note').value    = r.note||'';
+
+  // Payeurs
+  const payEl = $('editReg_payeur');
+  payEl.innerHTML = sortGuests(state.guests).map(g=>`<option value="${g.nom}">${g.nom}</option>`).join('');
+  payEl.value = r.payeur;
+
+  $('modalReglement').classList.add('open');
+}
+
+// Met à jour la liste des sous-catégories dans la modale d'édition
+function updateEditRegSubCat(selectSubId) {
+  const catId = parseInt($('editReg_cat')?.value);
+  const cat   = state.depenses.find(c=>c.id===catId);
+  const el    = $('editReg_subcat');
+  if(!el) return;
+  el.innerHTML = (cat?.sousCategories||[]).map(sc=>`<option value="${sc.id}">${sc.nom}</option>`).join('');
+  if(selectSubId) el.value = String(selectSubId);
+}
+
+// Sauvegarde les modifications du règlement
+async function saveEditReglement() {
+  const id     = parseInt($('editRegId').value);
+  const r      = state.reglements.find(x=>x.id===id);
+  if(!r) return;
+
+  const catId  = parseInt($('editReg_cat').value);
+  const subId  = parseInt($('editReg_subcat').value);
+  const cat    = state.depenses.find(c=>c.id===catId);
+  const sub    = cat?.sousCategories.find(s=>s.id===subId);
+
+  r.catId   = catId;
+  r.catNom  = cat?.nom  || r.catNom;
+  r.subId   = subId;
+  r.subNom  = sub?.nom  || r.subNom;
+  r.montant = parseFloat($('editReg_montant').value) || 0;
+  r.payeur  = $('editReg_payeur').value;
+  r.date    = $('editReg_date').value;
+  r.note    = $('editReg_note').value.trim();
+
+  closeModal('modalReglement');
+  await dbSaveReglements();
+  renderReglements();
+}
+
+// Rendu complet de la feuille Règlements
+function renderReglements() {
+  renderReglementsSelects();
+
+  const filterCat = $('filterRegCat')?.value || '';
+  const filterPay = $('filterRegPayeur')?.value || '';
+
+  // Filtre les règlements
+  const filtered = state.reglements.filter(r=>
+    (!filterCat || r.catNom === filterCat) &&
+    (!filterPay || r.payeur === filterPay)
+  ).sort((a,b)=> b.date.localeCompare(a.date));
+
+  // Total filtré
+  const total = filtered.reduce((s,r)=>s+r.montant,0);
+  const regTotalEl = $('regTotal');
+  if(regTotalEl) regTotalEl.textContent = `Total : ${total.toLocaleString('fr-FR')} €`;
+
+  // ── Tableau historique ──
+  const tb = $('reglementsTbody');
+  if(tb) {
+    tb.innerHTML = filtered.map(r=>`<tr>
+      <td style="white-space:nowrap;">${formatRegDate(r.date)}</td>
+      <td><span class="status-badge status-attente">${r.catNom}</span></td>
+      <td style="font-size:12px;color:var(--muted);">${r.subNom}</td>
+      <td><strong>${r.payeur}</strong></td>
+      <td style="font-size:12px;color:var(--muted);">${r.note||'–'}</td>
+      <td style="text-align:right;font-weight:500;color:var(--green);">${r.montant.toLocaleString('fr-FR')} €</td>
+      <td style="display:flex;gap:6px;">
+        <button class="btn btn-secondary btn-sm" onclick="openEditReglement(${r.id})" title="Modifier">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteReglement(${r.id})" title="Supprimer">🗑️</button>
+      </td>
+    </tr>`).join('')
+    || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">Aucun règlement enregistré</td></tr>';
+  }
+
+  // ── Synthèse par personne ──
+  const byPersonne = {};
+  state.reglements.forEach(r=>{
+    if(!byPersonne[r.payeur]) byPersonne[r.payeur] = 0;
+    byPersonne[r.payeur] += r.montant;
+  });
+  const totalGlobal = Object.values(byPersonne).reduce((s,v)=>s+v,0);
+  const synPersonne = $('regSynthesePersonne');
+  if(synPersonne) {
+    if(!Object.keys(byPersonne).length) {
+      synPersonne.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:16px 0;">Aucun règlement pour l\'instant.</div>';
+    } else {
+      synPersonne.innerHTML = `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Payeur</th><th style="text-align:right;">Total payé</th><th style="text-align:right;">Part</th></tr></thead>
+            <tbody>
+              ${Object.entries(byPersonne)
+                .sort((a,b)=>b[1]-a[1])
+                .map(([nom,tot])=>`<tr>
+                  <td><strong>${nom}</strong></td>
+                  <td style="text-align:right;font-weight:500;color:var(--green);">${tot.toLocaleString('fr-FR')} €</td>
+                  <td style="text-align:right;color:var(--muted);font-size:12px;">${totalGlobal>0?Math.round(tot/totalGlobal*100):0} %</td>
+                </tr>`).join('')}
+              <tr style="background:var(--dark);">
+                <td style="color:var(--gold-light);font-weight:500;">Total</td>
+                <td style="text-align:right;color:var(--gold);font-weight:600;font-family:'Cormorant Garamond',serif;font-size:18px;">${totalGlobal.toLocaleString('fr-FR')} €</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>`;
+    }
+  }
+
+  // ── Synthèse par poste (prévu vs payé) ──
+  const synPostes = $('regSynthesePostes');
+  if(synPostes) {
+    let rows = '';
+    let grandPrevu = 0, grandPaye = 0;
+    state.depenses.forEach(cat=>{
+      cat.sousCategories.forEach(sc=>{
+        const prevu = sc.montant || 0;
+        const paye  = state.reglements
+          .filter(r=>r.catId===cat.id && r.subId===sc.id)
+          .reduce((s,r)=>s+r.montant, 0);
+        const reste = prevu - paye;
+        grandPrevu += prevu; grandPaye += paye;
+        if(prevu > 0 || paye > 0) {
+          const pct = prevu > 0 ? Math.min(100, Math.round(paye/prevu*100)) : (paye>0?100:0);
+          const color = pct>=100?'var(--green)':pct>50?'var(--gold)':'var(--red)';
+          rows += `<tr>
+            <td><span class="status-badge status-attente">${cat.nom}</span></td>
+            <td style="font-size:12px;">${sc.nom}</td>
+            <td style="text-align:right;">${prevu.toLocaleString('fr-FR')} €</td>
+            <td style="text-align:right;color:var(--green);font-weight:500;">${paye.toLocaleString('fr-FR')} €</td>
+            <td style="text-align:right;color:${reste>0?'var(--red)':'var(--green)'};">${reste>0?reste.toLocaleString('fr-FR')+' €':'✓ Soldé'}</td>
+            <td style="min-width:100px;">
+              <div style="background:var(--border);border-radius:4px;height:8px;overflow:hidden;">
+                <div style="background:${color};height:100%;width:${pct}%;transition:width 0.3s;"></div>
+              </div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px;text-align:right;">${pct}%</div>
+            </td>
+          </tr>`;
+        }
+      });
+    });
+    const grandReste = grandPrevu - grandPaye;
+    synPostes.innerHTML = rows
+      ? `<div class="table-wrap"><table>
+          <thead><tr><th>Catégorie</th><th>Poste</th><th style="text-align:right;">Prévu</th><th style="text-align:right;">Payé</th><th style="text-align:right;">Reste</th><th>Avancement</th></tr></thead>
+          <tbody>
+            ${rows}
+            <tr style="background:var(--dark);">
+              <td colspan="2" style="color:var(--gold-light);font-weight:500;font-family:'Cormorant Garamond',serif;">TOTAUX</td>
+              <td style="text-align:right;color:var(--muted);">${grandPrevu.toLocaleString('fr-FR')} €</td>
+              <td style="text-align:right;color:var(--green-light);font-weight:600;">${grandPaye.toLocaleString('fr-FR')} €</td>
+              <td style="text-align:right;color:${grandReste>0?'#ffc107':'var(--green-light)'};font-weight:600;">${grandReste>0?grandReste.toLocaleString('fr-FR')+' €':'✓ Tout soldé'}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table></div>`
+      : '<div style="color:var(--muted);font-size:13px;padding:16px 0;">Aucun poste budgétaire défini dans la feuille Dépenses.</div>';
+  }
+}
+
+function formatRegDate(d) {
+  if(!d) return '–';
+  const [y,m,j] = d.split('-');
+  return `${j}/${m}/${y}`;
+}
+
 // ══ RENDER ALL ══
 function renderAll(){
   renderCategories();renderGuestsTable();renderCivilTable();renderReligTable();
-  renderSynthese();renderBudget();renderDepenses();renderBackupList();
+  renderSynthese();renderBudget();renderDepenses();renderReglements();renderBackupList();
 }
 </script>
 </body>
