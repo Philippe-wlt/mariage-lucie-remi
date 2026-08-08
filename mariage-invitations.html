@@ -433,6 +433,9 @@
       <div class="section-title">Plan de <em>table</em></div>
       <div class="section-sub">Affectez vos invités aux tables du repas</div>
 
+      <!-- Synthèse en haut -->
+      <div id="tablesSynthese" class="summary-grid" style="margin-bottom:24px;"></div>
+
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
 
         <!-- Colonne gauche : invités à placer -->
@@ -2379,6 +2382,20 @@ function renderTables() {
   const search = $('tableSearchInv')?.value.toLowerCase()||'';
   const catFilter = $('tableFilterCat')?.value||'';
 
+  // ── Synthèse ──
+  const totalEligibles = state.guests.filter(g=>g.relig_type==='repas'&&g.relig_rep_repas!=='non');
+  const totalPersonnesEligibles = totalEligibles.reduce((s,g)=>s+g.nb,0);
+  const placed = new Set(state.tables.flatMap(t=>t.places.map(p=>String(p.guestId))));
+  const placedGuests = totalEligibles.filter(g=>placed.has(String(g.id)));
+  const placedPersonnes = placedGuests.reduce((s,g)=>s+g.nb,0);
+  const nonRepondants = totalEligibles.filter(g=>!g.relig_repondu).length;
+  const synEl = $('tablesSynthese');
+  if(synEl) synEl.innerHTML = `
+    ${sC(state.tables.length,'Tables constituées')}
+    ${sC(placedPersonnes,'Personnes placées','o')}
+    ${sC(totalPersonnesEligibles-placedPersonnes,'Restant à placer','a')}
+    ${sC(nonRepondants,'Sans réponse','n')}`;
+
   // ── Liste invités à placer ──
   const eligibles = guestsEligiblesRepas();
   const filtered = eligibles.filter(g=>
@@ -2389,6 +2406,14 @@ function renderTables() {
   const countEl = $('tablesNonPlacesCount');
   if(countEl) countEl.textContent = `— ${eligibles.length} à placer`;
 
+  // Détermine si un invité n'a pas encore répondu (couleur rose)
+  const isPending = g => !g.relig_repondu;
+  const rowBg = g => isPending(g) ? '#fff0f5' : 'var(--white)';
+  const namColor = g => isPending(g) ? '#c0446a' : 'var(--text)';
+  const pendingBadge = g => isPending(g)
+    ? '<span style="font-size:10px;background:#fce4ec;color:#c0446a;padding:2px 6px;border-radius:10px;margin-left:6px;">⏳ Sans réponse</span>'
+    : '';
+
   const listEl = $('tablesInvitesList');
   if(listEl) {
     if(!filtered.length) {
@@ -2396,16 +2421,16 @@ function renderTables() {
         eligibles.length === 0 ? '✓ Tous les invités sont placés !' : 'Aucun résultat pour ces filtres.'
       }</div>`;
     } else {
-      // Groupé par catégorie
       const byCat = {};
       filtered.forEach(g=>{ if(!byCat[g.cat]) byCat[g.cat]=[]; byCat[g.cat].push(g); });
       listEl.innerHTML = Object.entries(byCat).map(([cat, guests])=>`
         <div style="background:var(--gold-pale);padding:6px 14px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--border);">${cat}</div>
         ${guests.map(g=>`
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);gap:8px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);gap:8px;background:${rowBg(g)};">
             <div>
-              <span style="font-size:13px;font-weight:500;">${g.nom}</span>
+              <span style="font-size:13px;font-weight:500;color:${namColor(g)};">${g.nom}</span>
               <span style="font-size:11px;color:var(--muted);margin-left:6px;">${g.nb} pers.</span>
+              ${pendingBadge(g)}
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
               <select class="cell-select" id="selectTable_${g.id}" style="font-size:12px;max-width:130px;">
@@ -2439,15 +2464,21 @@ function renderTables() {
       ${t.places.length === 0
         ? `<div style="text-align:center;color:var(--muted);font-size:13px;padding:12px;">Table vide — affectez des invités depuis la liste de gauche.</div>`
         : `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-            ${t.places.map((p,i)=>`
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:${i<t.places.length-1?'1px solid var(--border)':'none'};background:${i%2===0?'var(--white)':'var(--cream)'};">
+            ${t.places.map((p,i)=>{
+              // Retrouve l'invité pour connaître son statut de réponse
+              const g = state.guests.find(x=>String(x.id)===String(p.guestId));
+              const pending = g && !g.relig_repondu;
+              const bg = pending ? '#fff0f5' : (i%2===0?'var(--white)':'var(--cream)');
+              return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:${i<t.places.length-1?'1px solid var(--border)':'none'};background:${bg};">
                 <div>
-                  <span style="font-size:13px;font-weight:500;">${p.guestNom}</span>
+                  <span style="font-size:13px;font-weight:500;color:${pending?'#c0446a':'var(--text)'};">${p.guestNom}</span>
                   <span class="status-badge status-attente" style="margin-left:8px;font-size:10px;">${p.guestCat}</span>
                   <span style="font-size:11px;color:var(--muted);margin-left:6px;">${p.nb} pers.</span>
+                  ${pending?'<span style="font-size:10px;background:#fce4ec;color:#c0446a;padding:2px 6px;border-radius:10px;margin-left:6px;">⏳ Sans réponse</span>':''}
                 </div>
                 <button class="btn btn-outline btn-sm" onclick="removeFromTable(${t.id},'${p.guestId}')" title="Retirer de la table" style="font-size:11px;">✕ Retirer</button>
-              </div>`).join('')}
+              </div>`;
+            }).join('')}
           </div>`
       }
     </div>`;
