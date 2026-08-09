@@ -149,7 +149,7 @@
     <button class="nav-btn" onclick="showPanel('budget_detail',this)">📋 Dépenses</button>
     <button class="nav-btn" onclick="showPanel('reglements',this)">💳 Règlements</button>
     <button class="nav-btn" onclick="showPanel('tables',this)">🪑 Plan de table</button>
-    <button class="nav-btn" onclick="showPanel('categories',this)">🏷️ Catégories invités</button>
+    <button class="nav-btn" onclick="showPanel('categories',this)">⚙️ Paramétrages</button>
     <button class="nav-btn" onclick="showPanel('import',this)">📥 Import Excel</button>
     <button class="nav-btn" onclick="showPanel('export',this)">📤 Export Excel</button>
     <button class="nav-btn" onclick="showPanel('sauvegardes',this)">🗄️ Sauvegardes</button>
@@ -236,7 +236,7 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Nom</th><th>Catégorie</th><th>Nb pers.</th><th>Invité Civil</th><th>Invité Religieux</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Nom</th><th>Catégorie</th><th>Invité Civil</th><th>Invité Religieux</th><th>Actions</th></tr></thead>
             <tbody id="guestsTbody"></tbody>
           </table>
         </div>
@@ -254,7 +254,7 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Nom</th><th>Catégorie</th><th>Nb pers.</th><th>Invité</th><th>A répondu</th><th>Réponse</th></tr></thead>
+            <thead><tr><th>Nom</th><th>Catégorie</th><th>Invité</th><th>A répondu</th><th>Réponse</th></tr></thead>
             <tbody id="civilTbody"></tbody>
           </table>
         </div>
@@ -277,7 +277,7 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Nom</th><th>Catégorie</th><th>Nb pers.</th><th>Type invitation</th><th>Invitation remise</th><th>A répondu</th><th>Réponse VH</th><th>Réponse Repas</th><th>Menus enfants</th><th>Menus adultes</th></tr></thead>
+            <thead><tr><th>Nom</th><th>Catégorie</th><th>Type invitation</th><th>Invitation remise</th><th>A répondu</th><th>Réponse VH</th><th>Réponse Repas</th><th>Régime</th></tr></thead>
             <tbody id="religTbody"></tbody>
           </table>
         </div>
@@ -434,7 +434,10 @@
       <div class="section-sub">Affectez vos invités aux tables du repas</div>
 
       <!-- Synthèse en haut -->
-      <div id="tablesSynthese" class="summary-grid" style="margin-bottom:24px;"></div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
+        <div id="tablesSynthese" class="summary-grid" style="flex:1;margin-bottom:0;"></div>
+        <button class="btn btn-secondary" onclick="exportTables()" style="white-space:nowrap;margin-top:4px;">⬇️ Export CSV des tables</button>
+      </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
 
@@ -475,15 +478,26 @@
 
     <!-- ══ CATÉGORIES INVITÉS ══ -->
     <div class="panel" id="panel-categories">
-      <div class="section-title">Catégories <em>d'invités</em></div>
-      <div class="section-sub">Personnalisez les catégories pour classer vos invités</div>
-      <div class="card" style="max-width:500px;">
-        <div class="card-title">Catégories actuelles</div>
-        <ul id="catList" style="list-style:none;margin-bottom:16px;"></ul>
-        <hr class="divider">
-        <div style="display:flex;gap:10px;align-items:flex-end;">
-          <div class="form-group" style="flex:1;"><label>Nouvelle catégorie</label><input type="text" id="newCatInput" placeholder="ex: Amis du lycée"></div>
-          <button class="btn btn-primary" onclick="addCategory()">Ajouter</button>
+      <div class="section-title">Catégories <em>& Régimes</em></div>
+      <div class="section-sub">Personnalisez les catégories d'invités et les régimes alimentaires</div>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">🏷️ Catégories d'invités</div>
+          <ul id="catList" style="list-style:none;margin-bottom:16px;"></ul>
+          <hr class="divider">
+          <div style="display:flex;gap:10px;align-items:flex-end;">
+            <div class="form-group" style="flex:1;"><label>Nouvelle catégorie</label><input type="text" id="newCatInput" placeholder="ex: Amis du lycée"></div>
+            <button class="btn btn-primary" onclick="addCategory()">Ajouter</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">🥗 Régimes alimentaires</div>
+          <ul id="regimeList" style="list-style:none;margin-bottom:16px;"></ul>
+          <hr class="divider">
+          <div style="display:flex;gap:10px;align-items:flex-end;">
+            <div class="form-group" style="flex:1;"><label>Nouveau régime</label><input type="text" id="newRegimeInput" placeholder="ex: Intolérance lactose"></div>
+            <button class="btn btn-primary" onclick="addRegime()">Ajouter</button>
+          </div>
         </div>
       </div>
     </div>
@@ -809,7 +823,12 @@ let state = {
   reglements: [],
   regNextId: 1,
   tables: [],
-  tableNextId: 1
+  tableNextId: 1,
+  regimes: [
+    'Végétalien (vegan)', 'Végétarien', 'Halal', 'Casher',
+    'Sans gluten', 'Sans lactose', 'Allergie fruits de mer',
+    'Allergie noix/arachides', 'Diabétique', 'Autre'
+  ]
 };
 
 // ══ INIT ══
@@ -837,13 +856,14 @@ function setSyncStatus(type, text) {
 async function loadData() {
   setSyncStatus('syncing','⏳ Chargement…');
   try {
-    const [{data:guests},{data:cats},{data:budgets},{data:depenses},{data:reglements},{data:tablesData}] = await Promise.all([
+    const [{data:guests},{data:cats},{data:budgets},{data:depenses},{data:reglements},{data:tablesData},{data:regimesData}] = await Promise.all([
       db.from('guests').select('*'),
       db.from('categories').select('*').order('nom'),
       db.from('budget_lines').select('*').order('id'),
       db.from('depenses').select('*').order('id'),
       db.from('reglements').select('*').order('id'),
-      db.from('tables').select('*').order('id')
+      db.from('tables').select('*').order('id'),
+      db.from('regimes').select('*').order('id')
     ]);
     if(guests&&guests.length){state.guests=guests;}
     if(cats&&cats.length) state.categories=cats.map(c=>c.nom);
@@ -876,6 +896,9 @@ async function loadData() {
     }
     if(tablesData&&tablesData.length){
       try{ const t=JSON.parse(tablesData[0].data); if(t&&Array.isArray(t)){ state.tables=t; if(t.length) state.tableNextId=Math.max(...t.map(x=>x.id))+1; } }catch(e){}
+    }
+    if(regimesData&&regimesData.length){
+      try{ const r=JSON.parse(regimesData[0].data); if(r&&Array.isArray(r)&&r.length) state.regimes=r; }catch(e){}
     }
     setSyncStatus('ok','✓ Synchronisé');
   } catch(e){ console.error(e); setSyncStatus('error','✗ Erreur connexion'); }
@@ -1049,13 +1072,12 @@ function renderGuestsTable(){
   tb.innerHTML=list.map(g=>`<tr>
     <td><strong>${g.nom}</strong></td>
     <td><span class="status-badge status-attente">${g.cat}</span></td>
-    <td style="text-align:center;">${g.nb}</td>
     <td>${g.civil_inv==='oui'?'<span class="status-badge status-oui">✓ Oui</span>':'<span class="status-badge status-non">✕ Non</span>'}</td>
     <td>${rRT(g.relig_type)}</td>
     <td style="display:flex;gap:6px;flex-wrap:wrap;">
       <button class="btn btn-secondary btn-sm" onclick="openEditGuest(${g.id})">✏️</button>
       <button class="btn btn-danger btn-sm" onclick="removeGuest(${g.id})">🗑️</button>
-    </td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité</td></tr>';
+    </td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité</td></tr>';
 }
 function renderCivilTable(){
   const s=$('searchCivil')?.value||'',c=$('filterCivilCat')?.value||'';
@@ -1063,14 +1085,52 @@ function renderCivilTable(){
   const tb=$('civilTbody');if(!tb)return;
   tb.innerHTML=list.map(g=>`<tr>
     <td><strong>${g.nom}</strong></td><td><span class="status-badge status-attente">${g.cat}</span></td>
-    <td style="text-align:center;">${g.nb}</td><td><span class="status-badge status-oui">✓ Invité</span></td>
+    <td><span class="status-badge status-oui">✓ Invité</span></td>
     <td class="check-cell"><input type="checkbox" ${g.civil_repondu?'checked':''} onchange="updateGuest(${g.id},'civil_repondu',this.checked)"></td>
     <td><select class="cell-select" onchange="updateGuest(${g.id},'civil_rep',this.value||null)">
       <option value="" ${!g.civil_rep?'selected':''}>— Attente —</option>
       <option value="oui" ${g.civil_rep==='oui'?'selected':''}>✓ Présent</option>
       <option value="non" ${g.civil_rep==='non'?'selected':''}>✕ Absent</option>
-    </select></td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité civil</td></tr>';
+    </select></td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité civil</td></tr>';
 }
+
+// Liste des régimes disponibles — stockée dans state et persistée en Supabase
+// (table "regimes", id=1, data TEXT JSON)
+// Les régimes sont gérés depuis l'onglet "Catégories & Régimes"
+
+async function dbSaveRegimes() {
+  try { await db.from('regimes').upsert({id:1, data:JSON.stringify(state.regimes)},{onConflict:'id'}); }
+  catch(e){ console.error(e); }
+}
+
+function renderRegimeList() {
+  const ul = $('regimeList'); if(!ul) return;
+  ul.innerHTML = state.regimes.map((r,i)=>`
+    <li style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+      <span style="font-size:14px;">🥗 ${r}</span>
+      <button class="btn btn-danger btn-sm" onclick="removeRegime(${i})">✕</button>
+    </li>`).join('');
+}
+
+async function addRegime() {
+  const v = $('newRegimeInput')?.value.trim();
+  if(!v || state.regimes.includes(v)) return;
+  state.regimes.push(v);
+  $('newRegimeInput').value = '';
+  await dbSaveRegimes();
+  renderRegimeList();
+  // Rafraîchit le select régime dans le tableau religieux
+  renderReligTable();
+}
+
+async function removeRegime(i) {
+  if(!confirm(`Supprimer le régime "${state.regimes[i]}" ?`)) return;
+  state.regimes.splice(i,1);
+  await dbSaveRegimes();
+  renderRegimeList();
+  renderReligTable();
+}
+
 function renderReligTable(){
   const s=$('searchRelig')?.value||'',tf=$('filterReligType')?.value||'',c=$('filterReligCat')?.value||'';
   const list=sortGuests(state.guests.filter(g=>g.relig_type!=='non'
@@ -1079,8 +1139,9 @@ function renderReligTable(){
     &&(!c||g.cat===c)));
   const tb=$('religTbody');if(!tb)return;
   tb.innerHTML=list.map(g=>`<tr>
-    <td><strong>${g.nom}</strong></td><td><span class="status-badge status-attente">${g.cat}</span></td>
-    <td style="text-align:center;">${g.nb}</td><td>${rRT(g.relig_type)}</td>
+    <td><strong>${g.nom}</strong></td>
+    <td><span class="status-badge status-attente">${g.cat}</span></td>
+    <td>${rRT(g.relig_type)}</td>
     <td class="check-cell"><input type="checkbox" ${g.relig_remise?'checked':''} onchange="updateGuest(${g.id},'relig_remise',this.checked)"></td>
     <td class="check-cell"><input type="checkbox" ${g.relig_repondu?'checked':''} onchange="updateGuest(${g.id},'relig_repondu',this.checked)"></td>
     <td><select class="cell-select" onchange="updateGuest(${g.id},'relig_rep_vh',this.value||null)">
@@ -1093,9 +1154,13 @@ function renderReligTable(){
       <option value="oui" ${g.relig_rep_repas==='oui'?'selected':''}>✓ Présent</option>
       <option value="non" ${g.relig_rep_repas==='non'?'selected':''}>✕ Absent</option>
     </select>`:'<span style="color:var(--muted)">–</span>'}</td>
-    <td>${g.relig_type==='repas'?`<input class="num-input" type="number" min="0" value="${g.menus_enfant||0}" onchange="updateGuest(${g.id},'menus_enfant',parseInt(this.value)||0)">`:'–'}</td>
-    <td>${g.relig_type==='repas'?`<input class="num-input" type="number" min="0" value="${g.menus_adulte||0}" onchange="updateGuest(${g.id},'menus_adulte',parseInt(this.value)||0)">`:'–'}</td>
-    </tr>`).join('')||'<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité religieux</td></tr>';
+    <td>
+      <select class="cell-select" style="max-width:160px;" onchange="updateGuest(${g.id},'regime',this.value||null)">
+        <option value="" ${!g.regime?'selected':''}>— Aucun —</option>
+        ${state.regimes.map(r=>`<option value="${r}" ${g.regime===r?'selected':''}>${r}</option>`).join('')}
+      </select>
+    </td>
+    </tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité religieux</td></tr>';
 }
 
 // ══ SYNTHÈSE ══
@@ -2429,7 +2494,7 @@ function renderTables() {
           <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);gap:8px;background:${rowBg(g)};">
             <div>
               <span style="font-size:13px;font-weight:500;color:${namColor(g)};">${g.nom}</span>
-              <span style="font-size:11px;color:var(--muted);margin-left:6px;">${g.nb} pers.</span>
+              ${g.regime?`<span style="font-size:10px;background:#e8f4ec;color:var(--green);padding:2px 6px;border-radius:10px;margin-left:6px;">🥗 ${g.regime}</span>`:''}
               ${pendingBadge(g)}
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
@@ -2473,7 +2538,7 @@ function renderTables() {
                 <div>
                   <span style="font-size:13px;font-weight:500;color:${pending?'#c0446a':'var(--text)'};">${p.guestNom}</span>
                   <span class="status-badge status-attente" style="margin-left:8px;font-size:10px;">${p.guestCat}</span>
-                  <span style="font-size:11px;color:var(--muted);margin-left:6px;">${p.nb} pers.</span>
+                  ${g?.regime?`<span style="font-size:10px;background:#e8f4ec;color:var(--green);padding:2px 6px;border-radius:10px;margin-left:6px;">🥗 ${g.regime}</span>`:''}
                   ${pending?'<span style="font-size:10px;background:#fce4ec;color:#c0446a;padding:2px 6px;border-radius:10px;margin-left:6px;">⏳ Sans réponse</span>':''}
                 </div>
                 <button class="btn btn-outline btn-sm" onclick="removeFromTable(${t.id},'${p.guestId}')" title="Retirer de la table" style="font-size:11px;">✕ Retirer</button>
@@ -2494,9 +2559,43 @@ function assignFromSelect(guestId) {
   assignToTable(guestId, tableId);
 }
 
+// Export CSV du plan de table
+// Une ligne par personne avec : Table, Nom, Catégorie, Régime
+function exportTables() {
+  if(!state.tables.length) return alert('Aucune table à exporter.');
+
+  const headers = ['Table','Nom','Catégorie','Régime alimentaire'];
+  const rows = [];
+
+  state.tables.forEach(t => {
+    if(t.places.length === 0) {
+      // Inclut quand même les tables vides
+      rows.push([t.nom, '— Table vide —', '', '']);
+    } else {
+      t.places.forEach(p => {
+        const g = state.guests.find(x=>String(x.id)===String(p.guestId));
+        rows.push([t.nom, p.guestNom, p.guestCat, g?.regime||'']);
+      });
+    }
+    // Ligne vide entre les tables pour la lisibilité dans Excel
+    rows.push(['','','','']);
+  });
+
+  const escape = v => {
+    const s = String(v??'');
+    return s.includes(';')||s.includes('"')||s.includes('\n') ? `"${s.replace(/"/g,'""')}"` : s;
+  };
+  const csv = '\uFEFF' + [headers, ...rows].map(r=>r.map(escape).join(';')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'plan-de-table.csv';
+  a.click();
+}
+
 // ══ RENDER ALL ══
 function renderAll(){
-  renderCategories();renderGuestsTable();renderCivilTable();renderReligTable();
+  renderCategories();renderRegimeList();renderGuestsTable();renderCivilTable();renderReligTable();
   renderSynthese();renderBudget();renderDepenses();renderReglements();renderTables();renderBackupList();
 }
 </script>
