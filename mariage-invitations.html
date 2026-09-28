@@ -1641,14 +1641,14 @@ function renderDepenses(){
   // Les postes lieBudget sont en lecture seule (calculés automatiquement)
   saisie.innerHTML=state.depenses.map(cat=>`
     <div style="margin-bottom:20px;">
-      <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:500;color:var(--dark);margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--gold-pale);">
+      <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:700;color:var(--dark);margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--gold-pale);">
         ${cat.nom}
       </div>
       ${cat.sousCategories.map(sc=>{
         const isdef=(sc.statut==='definitif');
         const isLinked=!!sc.lieBudget;
         return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;${isLinked?'background:var(--gold-pale);margin:0 -4px;padding:8px 4px;border-radius:4px;':''}">
-          <span style="font-size:13px;color:var(--text);flex:1;min-width:120px;">
+          <span style="font-size:13px;color:var(--text);flex:1;min-width:120px;padding-left:1.5em;">
             ${sc.nom}
             ${isLinked?'<span style="font-size:10px;color:var(--gold);margin-left:6px;text-transform:uppercase;letter-spacing:0.5px;">⟳ Budget auto</span>':''}
           </span>
@@ -1705,7 +1705,7 @@ function renderDepenses(){
     totalDef+=catDef;totalEst+=catEst;
     if(catTotal>0){
       depRows+=`<tr style="background:var(--gold-pale);">
-        <td style="font-weight:500;font-family:'Cormorant Garamond',serif;font-size:15px;">${cat.nom}</td>
+        <td style="font-weight:700;font-family:'Cormorant Garamond',serif;font-size:15px;">${cat.nom}</td>
         <td></td>
         <td style="text-align:right;font-weight:500;">${catDef>0?catDef.toLocaleString('fr-FR')+' €':''}</td>
         <td style="text-align:right;font-weight:500;">${catEst>0?catEst.toLocaleString('fr-FR')+' €':''}</td>
@@ -2646,6 +2646,7 @@ function renderTables() {
           <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);gap:8px;background:${rowBg(g)};">
             <div>
               <span style="font-size:13px;font-weight:500;color:${namColor(g)};">${g.nom}</span>
+              ${(g.menus_adulte||0)===1?'<span style="font-size:10px;background:#e8f0fc;color:#3a5fa8;padding:2px 6px;border-radius:10px;margin-left:6px;">🧑 Adulte</span>':((g.menus_enfant||0)===1?'<span style="font-size:10px;background:#fce8f5;color:#8a3a6e;padding:2px 6px;border-radius:10px;margin-left:6px;">🧒 Enfant</span>':'')}
               ${g.regime?`<span style="font-size:10px;background:#e8f4ec;color:var(--green);padding:2px 6px;border-radius:10px;margin-left:6px;">🥗 ${g.regime}</span>`:''}
               ${pendingBadge(g)}
             </div>
@@ -2687,6 +2688,7 @@ function renderTables() {
                 <div>
                   <span style="font-size:13px;font-weight:500;color:${pending?'#c0446a':'var(--text)'};">${p.guestNom}</span>
                   <span class="status-badge status-attente" style="margin-left:8px;font-size:10px;">${p.guestCat}</span>
+                  ${g&&(g.menus_adulte||0)===1?'<span style="font-size:10px;background:#e8f0fc;color:#3a5fa8;padding:2px 6px;border-radius:10px;margin-left:6px;">🧑 Adulte</span>':(g&&(g.menus_enfant||0)===1?'<span style="font-size:10px;background:#fce8f5;color:#8a3a6e;padding:2px 6px;border-radius:10px;margin-left:6px;">🧒 Enfant</span>':'')}
                   ${g?.regime?`<span style="font-size:10px;background:#e8f4ec;color:var(--green);padding:2px 6px;border-radius:10px;margin-left:6px;">🥗 ${g.regime}</span>`:''}
                   ${pending?'<span style="font-size:10px;background:#fce4ec;color:#c0446a;padding:2px 6px;border-radius:10px;margin-left:6px;">⏳ Sans réponse</span>':''}
                 </div>
@@ -2710,18 +2712,19 @@ function assignFromSelect(guestId) {
 // Export CSV : Table ; Nom ; Catégorie ; Régime (ligne vide entre chaque table)
 function exportTables() {
   if(!state.tables.length) return alert('Aucune table à exporter.');
-  const headers = ['Table','Nom','Catégorie','Régime alimentaire'];
+  const headers = ['Table','Nom','Catégorie','Menu','Régime alimentaire'];
   const rows = [];
   state.tables.forEach(t => {
     if(t.places.length === 0) {
-      rows.push([t.nom, '— Table vide —', '', '']);
+      rows.push([t.nom, '— Table vide —', '', '', '']);
     } else {
       t.places.forEach(p => {
         const g = state.guests.find(x=>String(x.id)===String(p.guestId));
-        rows.push([t.nom, p.guestNom, p.guestCat, g?.regime||'']);
+        const menu = g ? ((g.menus_adulte||0)===1 ? 'Adulte' : ((g.menus_enfant||0)===1 ? 'Enfant' : '')) : '';
+        rows.push([t.nom, p.guestNom, p.guestCat, menu, g?.regime||'']);
       });
     }
-    rows.push(['','','','']);
+    rows.push(['','','','','']);
   });
   const escape = v => { const s=String(v??''); return s.includes(';')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s; };
   const csv = '\uFEFF' + [headers, ...rows].map(r=>r.map(escape).join(';')).join('\n');
