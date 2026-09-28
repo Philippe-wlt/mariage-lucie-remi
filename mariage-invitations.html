@@ -53,6 +53,10 @@
   .form-group input:focus,.form-group select:focus{outline:none;border-color:var(--gold);}
   select.cell-select{border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:12px;font-family:'Jost',sans-serif;background:var(--white);color:var(--text);cursor:pointer;}
   select.cell-select:focus{outline:none;border-color:var(--gold);}
+  input.cell-input{border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:12px;font-family:'Jost',sans-serif;background:var(--white);color:var(--text);}
+  input.cell-input:focus{outline:none;border-color:var(--gold);}
+  input.cell-input::-webkit-inner-spin-button,input.cell-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+  input.cell-input[type=number]{-moz-appearance:textfield;}
   .check-cell{text-align:center;}input[type="checkbox"]{width:16px;height:16px;accent-color:var(--gold);cursor:pointer;}
   .status-badge{display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap;}
   .status-oui{background:var(--green-light);color:var(--green);}.status-non{background:var(--red-light);color:var(--red);}
@@ -277,7 +281,7 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Nom</th><th>Catégorie</th><th>Type invitation</th><th>Invitation remise</th><th>A répondu</th><th>Réponse VH</th><th>Réponse Repas</th><th>Régime</th></tr></thead>
+            <thead><tr><th>Nom</th><th>Catégorie</th><th>Type invitation</th><th>Invitation remise</th><th>A répondu</th><th>Réponse VH</th><th>Réponse Repas</th><th colspan="2">Répartition menus (adultes / enfants)</th><th>Régime</th></tr></thead>
             <tbody id="religTbody"></tbody>
           </table>
         </div>
@@ -774,26 +778,83 @@
 </div>
 
 <script>
-// ══════════════════════════════════════════
-//  CONFIGURATION SUPABASE
-// ══════════════════════════════════════════
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║           APPLICATION MARIAGE — LUCIE & RÉMI                               ║
+// ║                                                                             ║
+// ║  PLAN DU CODE :                                                             ║
+// ║   1. Configuration         — URL et clé Supabase                           ║
+// ║   2. État local (state)    — Toutes les données en mémoire                 ║
+// ║   3. Démarrage             — Initialisation au chargement de la page       ║
+// ║   4. Synchronisation       — Lecture et écriture dans Supabase             ║
+// ║   5. Navigation            — Changement de feuille et d'onglet             ║
+// ║   6. Catégories invités    — Gestion des catégories                        ║
+// ║   7. Régimes alimentaires  — Gestion de la liste des régimes               ║
+// ║   8. Invités               — Ajout, modification, suppression              ║
+// ║   9. Affichage des listes  — Tableaux Invités, Civil, Religieux            ║
+// ║  10. Synthèse              — Compteurs et listes filtrées                  ║
+// ║  11. Budget repas          — Tarifs et estimation par catégorie            ║
+// ║  12. Dépenses              — Postes budgétaires et récapitulatif           ║
+// ║  13. Import — Nouvelle liste   — Ajout en masse depuis CSV                 ║
+// ║  14. Import — Mise à jour      — Mise à jour des réponses depuis CSV       ║
+// ║  15. Export CSV            — Téléchargement vers Excel                     ║
+// ║  16. Sauvegardes           — Snapshots horodatés, auto et manuels          ║
+// ║  17. Règlements            — Suivi des paiements par poste                 ║
+// ║  18. Plan de table         — Affectation des invités aux tables            ║
+// ║  19. Rafraîchissement      — renderAll() recharge tous les panneaux        ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 1. CONFIGURATION SUPABASE
+//    Ces deux valeurs identifient votre projet Supabase.
+//    Elles se trouvent dans : Supabase → Settings → API
+//      - SUPABASE_URL  : URL du projet  (ex: https://xxxx.supabase.co)
+//      - SUPABASE_KEY  : Clé publique "anon"
+//    ⚠️ Ne partagez pas ces valeurs publiquement.
+// ════════════════════════════════════════════════════════════════════════════════
+
 const SUPABASE_URL = 'https://pbjrkxnctfvwvuynsyzf.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBianJreG5jdGZ2d3Z1eW5zeXpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyMjU2NTMsImV4cCI6MjA5NTgwMTY1M30.2KXVLHgQIfs-jCU4WsQb6sYRX1DEn_k1Y_QvmdOkb1M';
 
-let db = null;
+let db = null;  // Client Supabase, créé au démarrage dans window.onload
+
+// Raccourci pour accéder à un élément HTML par son identifiant
 const $ = id => document.getElementById(id);
 
-// ══ STATE ══
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 2. ÉTAT LOCAL (state)
+//    C'est la mémoire de l'application pendant votre session.
+//    Toutes les données sont ici en mémoire, et chaque modification
+//    est immédiatement sauvegardée dans Supabase.
+//
+//    Structure d'un invité :
+//      id              : identifiant unique numérique
+//      nom             : nom et prénom
+//      cat             : catégorie (ex: "Famille proche")
+//      nb              : nombre de personnes dans le groupe
+//      civil_inv       : invité au civil ? (oui/non)
+//      civil_rep       : réponse civil (oui/non/null = pas encore répondu)
+//      civil_repondu   : a-t-il répondu au civil ? (true/false)
+//      relig_type      : type d'invitation religieux (non/vh/repas)
+//      relig_remise    : invitation physique remise ? (true/false)
+//      relig_repondu   : a-t-il répondu au religieux ? (true/false)
+//      relig_rep_vh    : réponse vin d'honneur (oui/non/null)
+//      relig_rep_repas : réponse repas (oui/non/null)
+//      menus_enfant    : nombre de menus enfant
+//      menus_adulte    : nombre de menus adulte
+//      regime          : régime alimentaire particulier (texte ou null)
+// ════════════════════════════════════════════════════════════════════════════════
+
 let state = {
   guests: [],
   categories: ['Famille proche','Famille éloignée','Amis','Collègues','Voisins','Autres'],
   budgetLines: [
     {id:1, label:"Vin d'honneur", amount:35},
-    {id:2, label:'Repas adulte', amount:90},
-    {id:3, label:'Repas enfant', amount:40}
+    {id:2, label:'Repas adulte',  amount:90},
+    {id:3, label:'Repas enfant',  amount:40}
   ],
   budgetNextId: 4,
-  // Dépenses : [{id, nom, sousCategories:[{id,nom,montant}]}]
   depenses: [
     {id:1, nom:'Mariage civil', sousCategories:[
       {id:101,nom:'Repas',montant:0},{id:102,nom:'Location de la salle',montant:0},{id:103,nom:'DJ',montant:0}
@@ -811,15 +872,14 @@ let state = {
       {id:501,nom:'Faire-parts',montant:0},{id:502,nom:'Timbres',montant:0}
     ]},
     {id:6, nom:'Restauration', sousCategories:[
-      {id:601,nom:'Vin d\'honneur',montant:0,lieBudget:'vh'},
-      {id:602,nom:'Repas adultes',montant:0,lieBudget:'repasA'},
-      {id:603,nom:'Repas enfants',montant:0,lieBudget:'repasE'}
+      // lieBudget : ces postes sont calculés automatiquement depuis la feuille Budget
+      {id:601,nom:"Vin d'honneur",  montant:0, lieBudget:'vh'},
+      {id:602,nom:'Repas adultes',  montant:0, lieBudget:'repasA'},
+      {id:603,nom:'Repas enfants',  montant:0, lieBudget:'repasE'}
     ]}
   ],
   depNextCatId: 7,
   depNextSubId: 700,
-  // Règlements : [{id, catNom, subNom, montant, payeur, date, note}]
-  // Stockés en JSON dans table "reglements" (id=1, data TEXT) — même principe que depenses
   reglements: [],
   regNextId: 1,
   tables: [],
@@ -831,10 +891,21 @@ let state = {
   ]
 };
 
-// ══ INIT ══
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 3. DÉMARRAGE
+//    Appelé automatiquement quand la page est chargée dans le navigateur.
+//    Étapes :
+//      1. Bloque le scroll sur les champs numériques (évite les erreurs de saisie)
+//      2. Crée la connexion à Supabase
+//      3. Charge toutes les données depuis la base
+//      4. Affiche tout dans l'interface
+//      5. Restaure les préférences de sauvegarde automatique
+// ════════════════════════════════════════════════════════════════════════════════
+
 window.onload = async function() {
-  // Bloque le scroll de la molette sur tous les champs numériques
-  // pour éviter de modifier involontairement une valeur en faisant défiler la page
+  // Protection contre la modification accidentelle des champs numériques
+  // quand on fait défiler la page avec la molette de la souris
   document.addEventListener('wheel', e => {
     if(document.activeElement.type === 'number') document.activeElement.blur();
   }, {passive:true});
@@ -842,17 +913,30 @@ window.onload = async function() {
   db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   await loadData();
   renderAll();
-  initBackupPreferences(); // Restaure les préférences de sauvegarde auto
+  initBackupPreferences();
 };
 
-// ══ SYNC STATUS ══
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 4. SYNCHRONISATION AVEC SUPABASE
+//    Ces fonctions lisent et écrivent les données dans la base en ligne.
+//    L'indicateur en haut à droite (✓ Synchronisé / ⏳ / ✗ Erreur) reflète
+//    l'état de la dernière opération.
+//
+//    Principe de stockage :
+//      - Les invités, catégories, budget → tables SQL classiques
+//      - Les dépenses, règlements, tables, régimes → stockés en JSON
+//        dans une seule ligne (id=1, data=texte JSON)
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Affiche l'état de synchronisation dans l'en-tête
 function setSyncStatus(type, text) {
   const el=$('syncStatus'); if(!el) return;
   el.textContent=text;
   el.className='sync-indicator'+(type==='syncing'?' syncing':type==='error'?' error':'');
 }
 
-// ══ CHARGEMENT ══
+// Charge toutes les données depuis Supabase en une seule fois (requêtes parallèles)
 async function loadData() {
   setSyncStatus('syncing','⏳ Chargement…');
   try {
@@ -865,9 +949,20 @@ async function loadData() {
       db.from('tables').select('*').order('id'),
       db.from('regimes').select('*').order('id')
     ]);
-    if(guests&&guests.length){state.guests=guests;}
+
+    if(guests&&guests.length) state.guests=guests;
     if(cats&&cats.length) state.categories=cats.map(c=>c.nom);
-    if(budgets&&budgets.length){state.budgetLines=budgets;state.budgetNextId=Math.max(...budgets.map(b=>b.id))+1;}
+    if(budgets&&budgets.length){
+      state.budgetLines=budgets;
+      state.budgetNextId=Math.max(...budgets.map(b=>b.id))+1;
+      // Migration : ajoute "Repas enfant" si absent
+      const hasEnfant=budgets.some(l=>l.label.toLowerCase().includes('enfant'));
+      if(!hasEnfant){
+        const newLine={id:state.budgetNextId++,label:'Repas enfant',amount:40};
+        state.budgetLines.push(newLine);
+        setTimeout(()=>dbSaveBudgetLine(newLine),500);
+      }
+    }
     if(depenses&&depenses.length){
       try{
         const d=JSON.parse(depenses[0].data);
@@ -885,7 +980,6 @@ async function loadData() {
                 {id:Date.now()+3, nom:'Repas enfants',   montant:0, lieBudget:'repasE'}
               ]
             });
-            // Sauvegarde immédiate de la migration
             setTimeout(()=>dbSaveDepenses(),500);
           }
         }
@@ -904,44 +998,41 @@ async function loadData() {
   } catch(e){ console.error(e); setSyncStatus('error','✗ Erreur connexion'); }
 }
 
-// Tri invités : Mariés en 1er, puis ordre des catégories, puis nom alphabétique
-function sortGuests(list){
-  const catOrder = c => {
-    const n = normName(c||'');
-    if(n.includes('mari')) return -1; // "Mariés", "Marié(s)"…
-    const idx = state.categories.findIndex(x=>normName(x)===n);
-    return idx===-1 ? 999 : idx;
-  };
-  return [...list].sort((a,b)=>{
-    const ca=catOrder(a.cat), cb=catOrder(b.cat);
-    if(ca!==cb) return ca-cb;
-    return (a.nom||'').localeCompare(b.nom||'','fr');
-  });
-}
-
-// ══ SAUVEGARDE INVITÉ ══
+// Sauvegarde ou met à jour un invité (insert si nouveau, update si existant)
 async function dbSaveGuest(g) {
   setSyncStatus('syncing','⏳ Sauvegarde…');
-  try{const{error}=await db.from('guests').upsert(g,{onConflict:'id'});if(error)throw error;setSyncStatus('ok','✓ Synchronisé');}
-  catch(e){console.error(e);setSyncStatus('error','✗ Erreur sync');}
+  try{
+    const{error}=await db.from('guests').upsert(g,{onConflict:'id'});
+    if(error) throw error;
+    setSyncStatus('ok','✓ Synchronisé');
+  }catch(e){console.error(e);setSyncStatus('error','✗ Erreur sync');}
 }
+
+// Supprime un invité par son id
 async function dbDeleteGuest(id) {
-  try{const{error}=await db.from('guests').delete().eq('id',id);if(error)throw error;setSyncStatus('ok','✓ Synchronisé');}
-  catch(e){console.error(e);setSyncStatus('error','✗ Erreur sync');}
+  try{
+    const{error}=await db.from('guests').delete().eq('id',id);
+    if(error) throw error;
+    setSyncStatus('ok','✓ Synchronisé');
+  }catch(e){console.error(e);setSyncStatus('error','✗ Erreur sync');}
 }
+
+// Remplace toute la liste des catégories (suppression + réinsertion complète)
 async function dbSaveCategories() {
   try{
     await db.from('categories').delete().neq('nom','___');
     await db.from('categories').insert(state.categories.map(nom=>({nom})));
   }catch(e){console.error(e);}
 }
+
 async function dbSaveBudgetLine(line) {
   try{await db.from('budget_lines').upsert(line,{onConflict:'id'});}catch(e){console.error(e);}
 }
 async function dbDeleteBudgetLine(id) {
   try{await db.from('budget_lines').delete().eq('id',id);}catch(e){console.error(e);}
 }
-// Dépenses stockées en JSON dans table depenses (1 seule ligne, id=1)
+
+// Sauvegarde toutes les dépenses en JSON (une seule ligne en base, id=1)
 async function dbSaveDepenses() {
   setSyncStatus('syncing','⏳ Sauvegarde…');
   try{
@@ -950,6 +1041,7 @@ async function dbSaveDepenses() {
   }catch(e){console.error(e);setSyncStatus('error','✗ Erreur sync');}
 }
 
+// Sauvegarde tous les règlements en JSON (une seule ligne en base, id=1)
 async function dbSaveReglements() {
   setSyncStatus('syncing','⏳ Sauvegarde…');
   try{
@@ -958,7 +1050,20 @@ async function dbSaveReglements() {
   }catch(e){console.error(e);setSyncStatus('error','✗ Erreur sync');}
 }
 
-// ══ NAVIGATION ══
+// Sauvegarde la liste des régimes alimentaires en JSON
+async function dbSaveRegimes() {
+  try{ await db.from('regimes').upsert({id:1, data:JSON.stringify(state.regimes)},{onConflict:'id'}); }
+  catch(e){ console.error(e); }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 5. NAVIGATION
+//    Gère le changement de feuille (onglets du menu principal)
+//    et les sous-onglets internes de la feuille Synthèse.
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Active la feuille cliquée et désactive toutes les autres
 function showPanel(name, el) {
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
@@ -966,15 +1071,25 @@ function showPanel(name, el) {
   if(el) el.classList.add('active');
   renderAll();
 }
+
+// Gère les sous-onglets de la Synthèse
 function switchSynthTab(name,el){
-  ['chiffres','civil','listes','nonrepondu'].forEach(t=>{const x=$('synth-'+t);if(x)x.style.display='none';});
+  ['chiffres','civil','listes','nonrepondu','absents'].forEach(t=>{const x=$('synth-'+t);if(x)x.style.display='none';});
   const t=$('synth-'+name);if(t)t.style.display='';
   document.querySelectorAll('.pill-tab').forEach(b=>b.classList.remove('active'));
   if(el)el.classList.add('active');
   renderSynthese();
 }
 
-// ══ CATÉGORIES INVITÉS ══
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 6. CATÉGORIES D'INVITÉS
+//    Permet de créer, renommer et supprimer les catégories
+//    (ex: Famille proche, Amis, Collègues…).
+//    Ces catégories alimentent tous les menus déroulants de filtrage.
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Affiche la liste et met à jour tous les menus déroulants de catégorie
 function renderCategories() {
   const ul=$('catList');if(!ul)return;
   ul.innerHTML=state.categories.map((c,i)=>`
@@ -988,121 +1103,29 @@ function renderCategories() {
     const el=$(id);if(el)el.innerHTML='<option value="">Toutes catégories</option>'+opts;
   });
 }
+
 async function addCategory(){
   const v=$('newCatInput').value.trim();if(!v||state.categories.includes(v))return;
-  state.categories.push(v);$('newCatInput').value='';await dbSaveCategories();renderCategories();
+  state.categories.push(v);$('newCatInput').value='';
+  await dbSaveCategories();renderCategories();
 }
+
 async function removeCategory(i){
   if(!confirm(`Supprimer "${state.categories[i]}" ?`))return;
-  state.categories.splice(i,1);await dbSaveCategories();renderCategories();
+  state.categories.splice(i,1);
+  await dbSaveCategories();renderCategories();
 }
 
-// ══ INVITÉS ══
-// Génère un identifiant numérique unique, compatible avec la colonne "id" (int8) de Supabase.
-// Combine l'horodatage en millisecondes (13 chiffres) + 3 chiffres aléatoires.
-// Cela évite les doublons même si deux utilisateurs ajoutent un invité à la même milliseconde,
-// tout en restant un nombre entier valide pour la base de données.
-function generateUniqueId() {
-  const timestamp = Date.now();                          // ex: 1751234567890 (13 chiffres)
-  const random     = Math.floor(Math.random()*900)+100;  // 3 chiffres aléatoires (100-999)
-  return Number(`${timestamp}${random}`);                 // ex: 1751234567890123
-}
-function makeGuest(nom,cat,nb,civil_inv,relig_type){
-  return{id:generateUniqueId(),nom,cat,nb:parseInt(nb)||1,civil_inv,civil_rep:null,civil_repondu:false,
-    relig_type,relig_remise:false,relig_repondu:false,relig_rep_vh:null,relig_rep_repas:null,menus_enfant:0,menus_adulte:0};
-}
-async function addGuest(){
-  const nom=$('g_nom').value.trim();if(!nom)return alert('Veuillez saisir un nom.');
-  const g=makeGuest(nom,$('g_cat').value,$('g_nb').value,$('g_civil_inv').value,$('g_relig_type').value);
-  state.guests.push(g);await dbSaveGuest(g);$('g_nom').value='';$('g_nb').value=1;renderAll();
-}
-async function removeGuest(id){
-  if(!confirm('Supprimer cet invité ?'))return;
-  state.guests=state.guests.filter(g=>g.id!==id);await dbDeleteGuest(id);renderAll();
-}
 
-async function clearAllGuests(){
-  const n=state.guests.length;
-  if(n===0) return alert('La liste est déjà vide.');
-  const confirmation=prompt(`⚠️ ATTENTION — Cette action est irréversible.\n\nVous allez supprimer les ${n} invité(s) de la liste.\n\nTapez CONFIRMER pour valider :`);
-  if(confirmation!=='CONFIRMER') return;
-  // Suppression en base
-  setSyncStatus('syncing','⏳ Suppression…');
-  try{
-    await db.from('guests').delete().neq('id',0);
-    state.guests=[];
-    setSyncStatus('ok','✓ Synchronisé');
-    renderAll();
-    alert(`✅ Liste vidée — ${n} invité(s) supprimé(s).`);
-  }catch(e){
-    console.error(e);
-    setSyncStatus('error','✗ Erreur suppression');
-    alert('Erreur lors de la suppression. Veuillez réessayer.');
-  }
-}
-function openEditGuest(id){
-  const g=state.guests.find(x=>x.id===id);if(!g)return;
-  $('editId').value=id;$('edit_nom').value=g.nom;$('edit_nb').value=g.nb;
-  $('edit_civil_inv').value=g.civil_inv;$('edit_relig_type').value=g.relig_type;
-  renderCategories();$('edit_cat').value=g.cat;$('modalGuest').classList.add('open');
-}
-async function saveEditGuest(){
-  const id=parseInt($('editId').value);const g=state.guests.find(x=>x.id===id);if(!g)return;
-  g.nom=$('edit_nom').value.trim();g.cat=$('edit_cat').value;g.nb=parseInt($('edit_nb').value)||1;
-  g.civil_inv=$('edit_civil_inv').value;g.relig_type=$('edit_relig_type').value;
-  closeModal('modalGuest');await dbSaveGuest(g);renderAll();
-}
-function closeModal(id){$(id).classList.remove('open');}
-async function updateGuest(id,field,val){
-  const g=state.guests.find(x=>x.id===id);if(!g)return;
-  g[field]=val;await dbSaveGuest(g);renderSynthese();
-}
+// ════════════════════════════════════════════════════════════════════════════════
+// 7. RÉGIMES ALIMENTAIRES
+//    Gère la liste des régimes disponibles dans le menu déroulant
+//    de la feuille Religieux (ex: Halal, Végétarien, Sans gluten…).
+//    Personnalisable depuis l'onglet Paramétrages.
+//    Sauvegardée dans la table "regimes" de Supabase.
+// ════════════════════════════════════════════════════════════════════════════════
 
-// ══ RENDER TABLES ══
-function rRT(t){
-  if(t==='vh')return'<span class="status-badge status-vh">🥂 VH seul</span>';
-  if(t==='repas')return'<span class="status-badge status-repas">🍽️ VH + Repas</span>';
-  return'<span class="status-badge status-attente">–</span>';
-}
-function renderGuestsTable(){
-  const s=$('searchGuest')?.value||'',c=$('filterCat')?.value||'';
-  const list=sortGuests(state.guests.filter(g=>(!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c)));
-  const cnt=$('guestCount');if(cnt)cnt.textContent=`${list.length} invité(s)`;
-  const tb=$('guestsTbody');if(!tb)return;
-  tb.innerHTML=list.map(g=>`<tr>
-    <td><strong>${g.nom}</strong></td>
-    <td><span class="status-badge status-attente">${g.cat}</span></td>
-    <td>${g.civil_inv==='oui'?'<span class="status-badge status-oui">✓ Oui</span>':'<span class="status-badge status-non">✕ Non</span>'}</td>
-    <td>${rRT(g.relig_type)}</td>
-    <td style="display:flex;gap:6px;flex-wrap:wrap;">
-      <button class="btn btn-secondary btn-sm" onclick="openEditGuest(${g.id})">✏️</button>
-      <button class="btn btn-danger btn-sm" onclick="removeGuest(${g.id})">🗑️</button>
-    </td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité</td></tr>';
-}
-function renderCivilTable(){
-  const s=$('searchCivil')?.value||'',c=$('filterCivilCat')?.value||'';
-  const list=sortGuests(state.guests.filter(g=>g.civil_inv==='oui'&&(!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c)));
-  const tb=$('civilTbody');if(!tb)return;
-  tb.innerHTML=list.map(g=>`<tr>
-    <td><strong>${g.nom}</strong></td><td><span class="status-badge status-attente">${g.cat}</span></td>
-    <td><span class="status-badge status-oui">✓ Invité</span></td>
-    <td class="check-cell"><input type="checkbox" ${g.civil_repondu?'checked':''} onchange="updateGuest(${g.id},'civil_repondu',this.checked)"></td>
-    <td><select class="cell-select" onchange="updateGuest(${g.id},'civil_rep',this.value||null)">
-      <option value="" ${!g.civil_rep?'selected':''}>— Attente —</option>
-      <option value="oui" ${g.civil_rep==='oui'?'selected':''}>✓ Présent</option>
-      <option value="non" ${g.civil_rep==='non'?'selected':''}>✕ Absent</option>
-    </select></td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité civil</td></tr>';
-}
-
-// Liste des régimes disponibles — stockée dans state et persistée en Supabase
-// (table "regimes", id=1, data TEXT JSON)
-// Les régimes sont gérés depuis l'onglet "Catégories & Régimes"
-
-async function dbSaveRegimes() {
-  try { await db.from('regimes').upsert({id:1, data:JSON.stringify(state.regimes)},{onConflict:'id'}); }
-  catch(e){ console.error(e); }
-}
-
+// Affiche la liste dans l'onglet Paramétrages
 function renderRegimeList() {
   const ul = $('regimeList'); if(!ul) return;
   ul.innerHTML = state.regimes.map((r,i)=>`
@@ -1119,8 +1142,7 @@ async function addRegime() {
   $('newRegimeInput').value = '';
   await dbSaveRegimes();
   renderRegimeList();
-  // Rafraîchit le select régime dans le tableau religieux
-  renderReligTable();
+  renderReligTable(); // Rafraîchit le menu déroulant dans la feuille Religieux
 }
 
 async function removeRegime(i) {
@@ -1131,12 +1153,208 @@ async function removeRegime(i) {
   renderReligTable();
 }
 
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 8. GESTION DES INVITÉS
+//    Création, modification et suppression des invités.
+//
+//    Identifiants : chaque invité reçoit un id numérique unique
+//    basé sur l'horodatage + 3 chiffres aléatoires, pour éviter
+//    les doublons même en cas de saisie simultanée par plusieurs personnes.
+//    Compatible avec la colonne int8 de Supabase.
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Génère un identifiant numérique unique (timestamp 13 chiffres + 3 chiffres aléatoires)
+function generateUniqueId() {
+  const timestamp = Date.now();
+  const random    = Math.floor(Math.random()*900)+100;
+  return Number(`${timestamp}${random}`);
+}
+
+// Crée la structure complète d'un nouvel invité
+function makeGuest(nom,cat,nb,civil_inv,relig_type){
+  return{
+    id: generateUniqueId(),
+    nom, cat, nb: parseInt(nb)||1,
+    civil_inv,
+    civil_rep:     null,
+    civil_repondu: false,
+    relig_type,
+    relig_remise:  false,
+    relig_repondu: false,
+    relig_rep_vh:    null,
+    relig_rep_repas: null,
+    menus_enfant: 0,
+    menus_adulte: 0,
+    regime: null
+  };
+}
+
+async function addGuest(){
+  const nom=$('g_nom').value.trim();if(!nom)return alert('Veuillez saisir un nom.');
+  const g=makeGuest(nom,$('g_cat').value,$('g_nb').value,$('g_civil_inv').value,$('g_relig_type').value);
+  state.guests.push(g);
+  await dbSaveGuest(g);
+  $('g_nom').value='';$('g_nb').value=1;
+  renderAll();
+}
+
+async function removeGuest(id){
+  if(!confirm('Supprimer cet invité ?'))return;
+  state.guests=state.guests.filter(g=>g.id!==id);
+  await dbDeleteGuest(id);renderAll();
+}
+
+// Vide entièrement la liste — nécessite de taper "CONFIRMER"
+async function clearAllGuests(){
+  const n=state.guests.length;
+  if(n===0) return alert('La liste est déjà vide.');
+  const confirmation=prompt(`⚠️ ATTENTION — Cette action est irréversible.\n\nVous allez supprimer les ${n} invité(s).\n\nTapez CONFIRMER pour valider :`);
+  if(confirmation!=='CONFIRMER') return;
+  setSyncStatus('syncing','⏳ Suppression…');
+  try{
+    await db.from('guests').delete().neq('id',0);
+    state.guests=[];
+    setSyncStatus('ok','✓ Synchronisé');
+    renderAll();
+    alert(`✅ Liste vidée — ${n} invité(s) supprimé(s).`);
+  }catch(e){
+    console.error(e);setSyncStatus('error','✗ Erreur suppression');
+    alert('Erreur lors de la suppression. Veuillez réessayer.');
+  }
+}
+
+// Ouvre la fenêtre de modification d'un invité existant
+function openEditGuest(id){
+  const g=state.guests.find(x=>x.id===id);if(!g)return;
+  $('editId').value=id;
+  $('edit_nom').value=g.nom;
+  $('edit_nb').value=g.nb;
+  $('edit_civil_inv').value=g.civil_inv;
+  $('edit_relig_type').value=g.relig_type;
+  renderCategories();
+  $('edit_cat').value=g.cat;
+  $('modalGuest').classList.add('open');
+}
+
+// Enregistre les modifications depuis la fenêtre d'édition
+async function saveEditGuest(){
+  const id=$('editId').value;
+  const g=state.guests.find(x=>x.id===id);if(!g)return;
+  g.nom=$('edit_nom').value.trim();
+  g.cat=$('edit_cat').value;
+  g.nb=parseInt($('edit_nb').value)||1;
+  g.civil_inv=$('edit_civil_inv').value;
+  g.relig_type=$('edit_relig_type').value;
+  closeModal('modalGuest');
+  await dbSaveGuest(g);renderAll();
+}
+
+function closeModal(id){$(id).classList.remove('open');}
+
+// Met à jour un seul champ d'un invité depuis un tableau
+// (cases à cocher, menus déroulants de réponse, régime…)
+async function updateGuest(id,field,val){
+  const g=state.guests.find(x=>x.id===id);if(!g)return;
+  g[field]=val;
+  await dbSaveGuest(g);
+  renderSynthese();
+}
+
+// Répartition menus adultes/enfants depuis le menu déroulant
+async function setMenusRepartition(id, type){
+  const g=state.guests.find(x=>x.id===id);if(!g)return;
+  if(type==='adulte'){ g.menus_adulte=1; g.menus_enfant=0; }
+  else if(type==='enfant'){ g.menus_adulte=0; g.menus_enfant=1; }
+  else { g.menus_adulte=0; g.menus_enfant=0; }
+  await dbSaveGuest(g);
+  renderSynthese();
+  renderBudget();
+  syncBudgetToDepenses();
+  renderDepenses();
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 9. AFFICHAGE DES LISTES D'INVITÉS
+//    Ces fonctions génèrent le HTML des trois tableaux principaux.
+//
+//    Tri standard :
+//      1. Catégorie "Mariés" toujours en premier
+//      2. Puis catégories dans l'ordre défini dans Paramétrages
+//      3. Puis ordre alphabétique dans chaque catégorie
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Tri standard appliqué à toutes les listes
+function sortGuests(list){
+  const catOrder = c => {
+    const n = normName(c||'');
+    if(n.includes('mari')) return -1;
+    const idx = state.categories.findIndex(x=>normName(x)===n);
+    return idx===-1 ? 999 : idx;
+  };
+  return [...list].sort((a,b)=>{
+    const ca=catOrder(a.cat), cb=catOrder(b.cat);
+    if(ca!==cb) return ca-cb;
+    return (a.nom||'').localeCompare(b.nom||'','fr');
+  });
+}
+
+// Badge HTML pour le type d'invitation religieuse
+function rRT(t){
+  if(t==='vh')    return '<span class="status-badge status-vh">🥂 VH seul</span>';
+  if(t==='repas') return '<span class="status-badge status-repas">🍽️ VH + Repas</span>';
+  return '<span class="status-badge status-attente">–</span>';
+}
+
+// Tableau général des invités (avec filtres nom + catégorie)
+function renderGuestsTable(){
+  const s=$('searchGuest')?.value||'',c=$('filterCat')?.value||'';
+  const list=sortGuests(state.guests.filter(g=>
+    (!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c)
+  ));
+  const cnt=$('guestCount');if(cnt)cnt.textContent=`${list.length} invité(s)`;
+  const tb=$('guestsTbody');if(!tb)return;
+  tb.innerHTML=list.map(g=>`<tr>
+    <td><strong>${g.nom}</strong></td>
+    <td><span class="status-badge status-attente">${g.cat}</span></td>
+    <td>${g.civil_inv==='oui'?'<span class="status-badge status-oui">✓ Oui</span>':'<span class="status-badge status-non">✕ Non</span>'}</td>
+    <td>${rRT(g.relig_type)}</td>
+    <td style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="btn btn-secondary btn-sm" onclick="openEditGuest(${g.id})">✏️</button>
+      <button class="btn btn-danger btn-sm" onclick="removeGuest(${g.id})">🗑️</button>
+    </td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité</td></tr>';
+}
+
+// Tableau de suivi du mariage civil (invités au civil uniquement)
+function renderCivilTable(){
+  const s=$('searchCivil')?.value||'',c=$('filterCivilCat')?.value||'';
+  const list=sortGuests(state.guests.filter(g=>
+    g.civil_inv==='oui'&&(!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c)
+  ));
+  const tb=$('civilTbody');if(!tb)return;
+  tb.innerHTML=list.map(g=>`<tr>
+    <td><strong>${g.nom}</strong></td>
+    <td><span class="status-badge status-attente">${g.cat}</span></td>
+    <td><span class="status-badge status-oui">✓ Invité</span></td>
+    <td class="check-cell"><input type="checkbox" ${g.civil_repondu?'checked':''} onchange="updateGuest(${g.id},'civil_repondu',this.checked)"></td>
+    <td><select class="cell-select" style="${g.civil_rep==='oui'?'background:#d4edda;color:#276038;border-color:#a3cfbb;':g.civil_rep==='non'?'background:#f8d7da;color:#842029;border-color:#f1aeb5;':''}" onchange="updateGuest(${g.id},'civil_rep',this.value||null)">
+      <option value="" ${!g.civil_rep?'selected':''}>— Attente —</option>
+      <option value="oui" ${g.civil_rep==='oui'?'selected':''}>✓ Présent</option>
+      <option value="non" ${g.civil_rep==='non'?'selected':''}>✕ Absent</option>
+    </select></td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité civil</td></tr>';
+}
+
+// Tableau de suivi du mariage religieux
+// Inclut : type d'invitation, remise, réponses VH et repas, régime alimentaire
 function renderReligTable(){
   const s=$('searchRelig')?.value||'',tf=$('filterReligType')?.value||'',c=$('filterReligCat')?.value||'';
-  const list=sortGuests(state.guests.filter(g=>g.relig_type!=='non'
+  const list=sortGuests(state.guests.filter(g=>
+    g.relig_type!=='non'
     &&(!s||g.nom.toLowerCase().includes(s.toLowerCase()))
     &&(!tf||g.relig_type===tf)
-    &&(!c||g.cat===c)));
+    &&(!c||g.cat===c)
+  ));
   const tb=$('religTbody');if(!tb)return;
   tb.innerHTML=list.map(g=>`<tr>
     <td><strong>${g.nom}</strong></td>
@@ -1144,39 +1362,73 @@ function renderReligTable(){
     <td>${rRT(g.relig_type)}</td>
     <td class="check-cell"><input type="checkbox" ${g.relig_remise?'checked':''} onchange="updateGuest(${g.id},'relig_remise',this.checked)"></td>
     <td class="check-cell"><input type="checkbox" ${g.relig_repondu?'checked':''} onchange="updateGuest(${g.id},'relig_repondu',this.checked)"></td>
-    <td><select class="cell-select" onchange="updateGuest(${g.id},'relig_rep_vh',this.value||null)">
+    <td><select class="cell-select" style="${g.relig_rep_vh==='oui'?'background:#d4edda;color:#276038;border-color:#a3cfbb;':g.relig_rep_vh==='non'?'background:#f8d7da;color:#842029;border-color:#f1aeb5;':''}" onchange="updateGuest(${g.id},'relig_rep_vh',this.value||null)">
       <option value="" ${!g.relig_rep_vh?'selected':''}>—</option>
       <option value="oui" ${g.relig_rep_vh==='oui'?'selected':''}>✓ Présent</option>
       <option value="non" ${g.relig_rep_vh==='non'?'selected':''}>✕ Absent</option>
     </select></td>
-    <td>${g.relig_type==='repas'?`<select class="cell-select" onchange="updateGuest(${g.id},'relig_rep_repas',this.value||null)">
+    <td>${g.relig_type==='repas'?`<select class="cell-select" style="${g.relig_rep_repas==='oui'?'background:#d4edda;color:#276038;border-color:#a3cfbb;':g.relig_rep_repas==='non'?'background:#f8d7da;color:#842029;border-color:#f1aeb5;':''}" onchange="updateGuest(${g.id},'relig_rep_repas',this.value||null)">
       <option value="" ${!g.relig_rep_repas?'selected':''}>—</option>
       <option value="oui" ${g.relig_rep_repas==='oui'?'selected':''}>✓ Présent</option>
       <option value="non" ${g.relig_rep_repas==='non'?'selected':''}>✕ Absent</option>
     </select>`:'<span style="color:var(--muted)">–</span>'}</td>
+    <td colspan="2">${g.relig_type==='repas'&&g.relig_rep_repas==='oui'?`<select class="cell-select" onchange="setMenusRepartition(${g.id},this.value)">
+      <option value="" ${!g.menus_adulte&&!g.menus_enfant?'selected':''}>— Choisir —</option>
+      <option value="adulte" ${(g.menus_adulte||0)===1?'selected':''}>🧑 Adulte</option>
+      <option value="enfant" ${(g.menus_enfant||0)===1?'selected':''}>🧒 Enfant</option>
+    </select>`:'<span style="color:var(--muted);font-size:12px;">–</span>'}</td>
     <td>
       <select class="cell-select" style="max-width:160px;" onchange="updateGuest(${g.id},'regime',this.value||null)">
         <option value="" ${!g.regime?'selected':''}>— Aucun —</option>
         ${state.regimes.map(r=>`<option value="${r}" ${g.regime===r?'selected':''}>${r}</option>`).join('')}
       </select>
     </td>
-    </tr>`).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité religieux</td></tr>';
+    </tr>`).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px;">Aucun invité religieux</td></tr>';
 }
 
-// ══ SYNTHÈSE ══
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 10. SYNTHÈSE
+//    5 sous-onglets :
+//      - Chiffres clés  : totaux civil, VH, repas
+//      - Civil          : présents et sans réponse au civil
+//      - Relig. présents: présents au VH et au repas
+//      - Relig. sans rép: n'ont pas encore répondu
+//      - Absents        : ont répondu absent
+// ════════════════════════════════════════════════════════════════════════════════
+
 function renderSynthese(){
   const gs=state.guests;
-  const cI=gs.filter(g=>g.civil_inv==='oui'),cO=cI.filter(g=>g.civil_rep==='oui'),cN=cI.filter(g=>g.civil_rep==='non'),cA=cI.filter(g=>!g.civil_rep);
-  const vI=gs.filter(g=>g.relig_type==='vh'||g.relig_type==='repas'),vO=vI.filter(g=>g.relig_rep_vh==='oui'),vN=vI.filter(g=>g.relig_rep_vh==='non'),vA=vI.filter(g=>!g.relig_rep_vh);
-  const rI=gs.filter(g=>g.relig_type==='repas'),rO=rI.filter(g=>g.relig_rep_repas==='oui'),rN=rI.filter(g=>g.relig_rep_repas==='non'),rA=rI.filter(g=>!g.relig_rep_repas);
+
+  // Segmentation des invités selon leur statut
+  const cI=gs.filter(g=>g.civil_inv==='oui');
+  const cO=cI.filter(g=>g.civil_rep==='oui');
+  const cN=cI.filter(g=>g.civil_rep==='non');
+  const cA=cI.filter(g=>!g.civil_rep);
+
+  const vI=gs.filter(g=>g.relig_type==='vh'||g.relig_type==='repas');
+  const vO=vI.filter(g=>g.relig_rep_vh==='oui');
+  const vN=vI.filter(g=>g.relig_rep_vh==='non');
+  const vA=vI.filter(g=>!g.relig_rep_vh);
+
+  const rI=gs.filter(g=>g.relig_type==='repas');
+  const rO=rI.filter(g=>g.relig_rep_repas==='oui');
+  const rN=rI.filter(g=>g.relig_rep_repas==='non');
+  const rA=rI.filter(g=>!g.relig_rep_repas);
+
   const nb=arr=>arr.reduce((s,g)=>s+g.nb,0);
+  // Pour les confirmés repas : 1 menu par personne (adulte ou enfant), fallback 1 si pas encore choisi
+  const nbMenus=arr=>arr.reduce((s,g)=>{
+    const m=(g.menus_adulte||0)+(g.menus_enfant||0);
+    return s+(m>0?m:1);
+  },0);
 
   // Chiffres clés
   const sc=$('statsCivil');if(sc)sc.innerHTML=`<div style="grid-column:1/-1;font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--civil);margin-bottom:4px;">⚖️ Mariage Civil</div>${sC(nb(cI),'Invités')}${sC(nb(cO),'Présents','o')}${sC(nb(cN),'Absents','n')}${sC(nb(cA),'Sans réponse','a')}`;
   const sv=$('statsVH');if(sv)sv.innerHTML=`<div style="grid-column:1/-1;font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--relig);margin-bottom:4px;">🥂 Vin d'Honneur</div>${sC(nb(vI),'Invités')}${sC(nb(vO),'Présents','o')}${sC(nb(vN),'Absents','n')}${sC(nb(vA),'Sans réponse','a')}`;
-  const sr=$('statsRepas');if(sr)sr.innerHTML=`<div style="grid-column:1/-1;font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--civil);margin-bottom:4px;">🍽️ Repas</div>${sC(nb(rI),'Invités')}${sC(nb(rO),'Présents','o')}${sC(nb(rN),'Absents','n')}${sC(nb(rA),'Sans réponse','a')}`;
+  const sr=$('statsRepas');if(sr)sr.innerHTML=`<div style="grid-column:1/-1;font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--civil);margin-bottom:4px;">🍽️ Repas</div>${sC(nb(rI),'Invités')}${sC(nbMenus(rO),'Présents','o')}${sC(nb(rN),'Absents','n')}${sC(nb(rA),'Sans réponse','a')}`;
 
-  // Popule les selects catégorie
+  // Mise à jour des filtres catégorie
   const opts='<option value="">Toutes catégories</option>'+state.categories.map(c=>`<option value="${c}">${c}</option>`).join('');
   ['synthFilterCat','synthFilterCatNR','synthFilterCatCivil','synthFilterCatAbs'].forEach(id=>{
     const el=$(id);
@@ -1184,48 +1436,59 @@ function renderSynthese(){
   });
 
   const li=g=>`<li><span>${g.nom}</span><span class="cat">${g.cat} · ${g.nb} p.</span></li>`;
-  const empty='<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun</li>';
-  const allOk='<li style="color:var(--green);padding:8px 14px;font-size:13px;">✓ Tous ont répondu</li>';
+  const empty  ='<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun</li>';
+  const allOk  ='<li style="color:var(--green);padding:8px 14px;font-size:13px;">✓ Tous ont répondu</li>';
   const match=(g,s,c)=>(!s||g.nom.toLowerCase().includes(s.toLowerCase()))&&(!c||g.cat===c);
 
-  // ── Civil ──
   const sc2=$('synthSearchCivil')?.value||'', cc=$('synthFilterCatCivil')?.value||'';
   const lCO=$('listCivilOui');  if(lCO)  lCO.innerHTML  = sortGuests(cO.filter(g=>match(g,sc2,cc))).map(li).join('')||empty;
-  const lCNR=$('listCivilNR'); if(lCNR) lCNR.innerHTML = sortGuests(cA.filter(g=>match(g,sc2,cc))).map(li).join('')||(sc2||cc?empty:allOk);
+  const lCNR=$('listCivilNR'); if(lCNR) lCNR.innerHTML  = sortGuests(cA.filter(g=>match(g,sc2,cc))).map(li).join('')||(sc2||cc?empty:allOk);
 
-  // ── Religieux présents ──
   const s1=$('synthSearch')?.value||'', c1=$('synthFilterCat')?.value||'';
   const lVH=$('listVH');   if(lVH)  lVH.innerHTML  = sortGuests(vO.filter(g=>match(g,s1,c1))).map(li).join('')||empty;
   const lR=$('listRepas'); if(lR)   lR.innerHTML   = sortGuests(rO.filter(g=>match(g,s1,c1))).map(li).join('')||empty;
 
-  // ── Religieux sans réponse ──
   const s2=$('synthSearchNR')?.value||'', c2=$('synthFilterCatNR')?.value||'';
   const lNV=$('listNRVH');    if(lNV)  lNV.innerHTML  = sortGuests(vA.filter(g=>match(g,s2,c2))).map(li).join('')||(s2||c2?empty:allOk);
   const lNR=$('listNRRepas'); if(lNR)  lNR.innerHTML  = sortGuests(rA.filter(g=>match(g,s2,c2))).map(li).join('')||(s2||c2?empty:allOk);
 
-  // ── Absents ──
   const sa=$('synthSearchAbs')?.value||'', ca=$('synthFilterCatAbs')?.value||'';
   const lCA=$('listCivilAbs'); if(lCA) lCA.innerHTML = sortGuests(cN.filter(g=>match(g,sa,ca))).map(li).join('')||'<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun absent confirmé</li>';
   const lVA=$('listVHAbs');    if(lVA) lVA.innerHTML = sortGuests(vN.filter(g=>match(g,sa,ca))).map(li).join('')||'<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun</li>';
   const lRA=$('listRepasAbs'); if(lRA) lRA.innerHTML = sortGuests(rN.filter(g=>match(g,sa,ca))).map(li).join('')||'<li style="color:var(--muted);padding:8px 14px;font-size:13px;">Aucun</li>';
 }
+
+// Génère une carte statistique colorée
+// t='o' → vert, 'n' → rouge, autre → doré
 function sC(n,label,t=''){
   const c=t==='o'?'var(--green)':t==='n'?'var(--red)':'var(--gold)';
   return`<div class="stat-card"><div class="stat-num" style="color:${c}">${n}</div><div class="stat-label">${label}</div></div>`;
 }
 
-// ══ BUDGET REPAS ══
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 11. BUDGET REPAS
+//    Gère les tarifs par personne et calcule l'estimation du coût total.
+//    Deux visions :
+//      - Par prestation : VH, repas adulte, repas enfant
+//      - Par catégorie d'invités : répartition du coût
+// ════════════════════════════════════════════════════════════════════════════════
+
 function renderBudget(){
+  // Comptage des présents confirmés
   const vhP=state.guests.filter(g=>g.relig_rep_vh==='oui').reduce((s,g)=>s+g.nb,0);
-  const rA=state.guests.filter(g=>g.relig_rep_repas==='oui').reduce((s,g)=>s+(g.menus_adulte||0),0);
-  const rE=state.guests.filter(g=>g.relig_rep_repas==='oui').reduce((s,g)=>s+(g.menus_enfant||0),0);
+  const rConfirmes=state.guests.filter(g=>g.relig_rep_repas==='oui');
+  const rA=rConfirmes.reduce((s,g)=>s+(g.menus_adulte||0),0);
+  const rE=rConfirmes.reduce((s,g)=>s+(g.menus_enfant||0),0);
+
+  // Tableau des tarifs modifiables
   const tb=$('budgetLinesTbody');if(!tb)return;
   tb.innerHTML=state.budgetLines.map(l=>`<tr>
     <td><input style="border:none;background:transparent;font-family:'Jost',sans-serif;font-size:13px;width:200px;" value="${l.label}" onchange="updateBudgetLabel(${l.id},this.value)"></td>
     <td><input class="num-input" type="number" min="0" value="${l.amount}" onchange="updateBudgetAmount(${l.id},parseFloat(this.value)||0)"> €</td>
     <td><button class="btn btn-danger btn-sm" onclick="removeBudgetLine(${l.id})">✕</button></td></tr>`).join('');
 
-  // ── Tableau estimation par prestation ──
+  // Estimation globale par prestation
   let rows='',grand=0;
   state.budgetLines.forEach(l=>{
     const lb=l.label.toLowerCase();
@@ -1234,26 +1497,23 @@ function renderBudget(){
     rows+=`<tr><td>${l.label}</td><td style="text-align:center;">${qty}</td><td style="text-align:right;">${l.amount} €</td><td style="text-align:right;font-weight:500;">${tot.toLocaleString('fr-FR')} €</td></tr>`;
   });
 
-  // ── Coût estimé par catégorie d'invités ──
+  // Tarifs de référence pour le calcul par catégorie
   const tarifVH=state.budgetLines.find(l=>l.label.toLowerCase().includes('vin')||l.label.toLowerCase().includes('honneur'))?.amount||0;
   const tarifRA=state.budgetLines.find(l=>l.label.toLowerCase().includes('adulte'))?.amount||0;
   const tarifRE=state.budgetLines.find(l=>l.label.toLowerCase().includes('enfant'))?.amount||0;
 
-  // Calcul par catégorie
+  // Agrégation par catégorie
   const catMap={};
   state.guests.forEach(g=>{
     const c=g.cat||'Sans catégorie';
     if(!catMap[c]) catMap[c]={invVH:0,invRepas:0,presVH:0,presA:0,presE:0};
-    // Invités
     if(g.relig_type==='vh'||g.relig_type==='repas') catMap[c].invVH+=g.nb;
     if(g.relig_type==='repas') catMap[c].invRepas+=g.nb;
-    // Présents confirmés
     if(g.relig_rep_vh==='oui') catMap[c].presVH+=g.nb;
     if(g.relig_rep_repas==='oui'){ catMap[c].presA+=(g.menus_adulte||0); catMap[c].presE+=(g.menus_enfant||0); }
   });
 
-  let catRows='',catGrand=0;
-  // Tri : Mariés en 1er, puis ordre des catégories
+  let catRows='';
   const sortedCats=Object.keys(catMap).sort((a,b)=>{
     const na=normName(a),nb2=normName(b);
     if(na.includes('mari')) return -1;
@@ -1266,15 +1526,10 @@ function renderBudget(){
     const d=catMap[c];
     const costMax=(d.invVH*tarifVH)+(d.invRepas*tarifRA);
     const costConf=(d.presVH*tarifVH)+(d.presA*tarifRA)+(d.presE*tarifRE);
-    catGrand+=costMax;
     catRows+=`<tr>
       <td><strong>${c}</strong></td>
-      <td style="text-align:center;font-size:12px;">
-        ${d.invVH>0?`🥂 ${d.invVH} inv.`:''}${d.invVH>0&&d.invRepas>0?' · ':''}${d.invRepas>0?`🍽️ ${d.invRepas} inv.`:''}
-      </td>
-      <td style="text-align:center;font-size:12px;">
-        ${d.presVH>0?`🥂 ${d.presVH} conf.`:'–'}${d.presVH>0&&(d.presA+d.presE)>0?' · ':''}${(d.presA+d.presE)>0?`🍽️ ${d.presA+d.presE} conf.`:''}
-      </td>
+      <td style="text-align:center;font-size:12px;">${d.invVH>0?`🥂 ${d.invVH} inv.`:''}${d.invVH>0&&d.invRepas>0?' · ':''}${d.invRepas>0?`🍽️ ${d.invRepas} inv.`:''}</td>
+      <td style="text-align:center;font-size:12px;">${d.presVH>0?`🥂 ${d.presVH} conf.`:'–'}${d.presVH>0&&(d.presA+d.presE)>0?' · ':''}${(d.presA+d.presE)>0?`🍽️ ${d.presA+d.presE} conf.`:''}</td>
       <td style="text-align:right;color:var(--gold);">${costMax>0?costMax.toLocaleString('fr-FR')+' €':'–'}</td>
       <td style="text-align:right;color:var(--green);font-weight:500;">${costConf>0?costConf.toLocaleString('fr-FR')+' €':'–'}</td>
     </tr>`;
@@ -1297,17 +1552,12 @@ function renderBudget(){
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr>
-          <th>Catégorie</th>
-          <th style="text-align:center;">Invités</th>
-          <th style="text-align:center;">Confirmés</th>
-          <th style="text-align:right;color:#d4b483;">Coût max</th>
-          <th style="text-align:right;color:#a8d5b5;">Coût confirmé</th>
-        </tr></thead>
+        <thead><tr><th>Catégorie</th><th style="text-align:center;">Invités</th><th style="text-align:center;">Confirmés</th><th style="text-align:right;color:#d4b483;">Coût max</th><th style="text-align:right;color:#a8d5b5;">Coût confirmé</th></tr></thead>
         <tbody>${catRows||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px;">Aucun invité religieux</td></tr>'}</tbody>
       </table>
     </div>`;
 }
+
 async function addBudgetLine(){
   const line={id:state.budgetNextId++,label:'Nouvelle prestation',amount:0};
   state.budgetLines.push(line);await dbSaveBudgetLine(line);renderBudget();
@@ -1318,42 +1568,44 @@ async function removeBudgetLine(id){
 async function updateBudgetLabel(id,val){const l=state.budgetLines.find(x=>x.id===id);if(l){l.label=val;await dbSaveBudgetLine(l);}}
 async function updateBudgetAmount(id,val){const l=state.budgetLines.find(x=>x.id===id);if(l){l.amount=val;await dbSaveBudgetLine(l);renderBudget();}}
 
-// ══ DÉPENSES DÉTAILLÉES ══
-// Synchronise les montants Restauration (VH + repas) depuis la feuille Budget Repas.
-// Les postes liés au budget (lieBudget = 'vh'/'repasA'/'repasE') voient leur montant
-// recalculé automatiquement à chaque affichage — ils ne sont pas modifiables manuellement.
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 12. DÉPENSES DÉTAILLÉES
+//    Postes budgétaires libres (catégories + sous-catégories).
+//    Chaque poste : montant + statut Estimé ou Définitif.
+//    Les postes "Restauration" (lieBudget) sont calculés automatiquement
+//    depuis la feuille Budget et affichés en lecture seule.
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Recalcule les montants Restauration depuis les tarifs Budget
+// Appelée à chaque affichage de la feuille Dépenses
 function syncBudgetToDepenses() {
   const gs = state.guests;
-
-  // Tarifs unitaires depuis les lignes budget
   const tarifVH   = state.budgetLines.find(l=>l.label.toLowerCase().includes('vin')||l.label.toLowerCase().includes('honneur'))?.amount||0;
   const tarifRA   = state.budgetLines.find(l=>l.label.toLowerCase().includes('adulte'))?.amount||0;
   const tarifRE   = state.budgetLines.find(l=>l.label.toLowerCase().includes('enfant'))?.amount||0;
-
-  // Nombres : estimation max (invités - absents confirmés)
-  const vhInv     = gs.filter(g=>g.relig_type==='vh'||g.relig_type==='repas').reduce((s,g)=>s+g.nb,0);
-  const vhNon     = gs.filter(g=>(g.relig_type==='vh'||g.relig_type==='repas')&&g.relig_rep_vh==='non').reduce((s,g)=>s+g.nb,0);
+  // VH : confirmés oui (utilise nb car pas de menus VH individuels)
+  const vhOui    = gs.filter(g=>(g.relig_type==='vh'||g.relig_type==='repas')&&g.relig_rep_vh==='oui').reduce((s,g)=>s+g.nb,0);
+  const repasConf = gs.filter(g=>g.relig_rep_repas==='oui');
+  const menusA = repasConf.reduce((s,g)=>s+(g.menus_adulte||0),0);
+  const menusE = repasConf.reduce((s,g)=>s+(g.menus_enfant||0),0);
+  // Estimation max repas (invités repas sans réponse négative) pour le poste repasA
   const repasInv  = gs.filter(g=>g.relig_type==='repas').reduce((s,g)=>s+g.nb,0);
   const repasNon  = gs.filter(g=>g.relig_type==='repas'&&g.relig_rep_repas==='non').reduce((s,g)=>s+g.nb,0);
-  const estVH     = vhInv - vhNon;
-  const estRepas  = repasInv - repasNon;
-
-  // Met à jour les montants des postes liés au budget dans state.depenses
+  const estRepasMax = repasInv - repasNon;
   state.depenses.forEach(cat=>{
     cat.sousCategories.forEach(sc=>{
-      if(sc.lieBudget==='vh')     sc.montant = estVH    * tarifVH;
-      if(sc.lieBudget==='repasA') sc.montant = estRepas * tarifRA;
-      // Repas enfants : seulement si au moins un menu enfant a été saisi
+      if(sc.lieBudget==='vh')     sc.montant = vhOui    * tarifVH;
+      if(sc.lieBudget==='repasA') sc.montant = menusA   * tarifRA;
       if(sc.lieBudget==='repasE') {
-        const totalMenusEnfants = gs.filter(g=>g.relig_type==='repas').reduce((s,g)=>s+(g.menus_enfant||0),0);
-        sc.montant = totalMenusEnfants > 0 ? totalMenusEnfants * tarifRE : 0;
+        // Affiche uniquement si des menus enfants ont été saisis
+        sc.montant = menusE > 0 ? menusE * tarifRE : 0;
       }
     });
   });
 }
 
 function renderDepenses(){
-  // Synchronise d'abord les montants repas/VH depuis la feuille Budget
   syncBudgetToDepenses();
 
   const manager=$('depCatManager');
@@ -1361,23 +1613,23 @@ function renderDepenses(){
   const recap=$('depRecap');
   if(!manager||!saisie||!recap) return;
 
-  // ── Gestionnaire catégories/sous-catégories ──
+  // Panneau gauche : structure des catégories/sous-catégories
   manager.innerHTML=state.depenses.map(cat=>`
     <div style="margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
       <div style="background:var(--dark);color:var(--gold-light);padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <input style="background:transparent;border:none;color:var(--gold-light);font-family:'Jost',sans-serif;font-size:13px;font-weight:500;flex:1;letter-spacing:1px;" 
+        <input style="background:transparent;border:none;color:var(--gold-light);font-family:'Jost',sans-serif;font-size:13px;font-weight:500;flex:1;letter-spacing:1px;"
           value="${cat.nom}" onchange="renameDepCat(${cat.id},this.value)">
         <button class="btn btn-danger btn-sm" onclick="removeDepCat(${cat.id})" style="padding:3px 8px;font-size:11px;">✕ Catégorie</button>
       </div>
       <div style="padding:10px 14px;">
         ${cat.sousCategories.map(sc=>`
           <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);">
-            <input style="border:none;background:transparent;font-family:'Jost',sans-serif;font-size:13px;flex:1;" 
+            <input style="border:none;background:transparent;font-family:'Jost',sans-serif;font-size:13px;flex:1;"
               value="${sc.nom}" onchange="renameDepSub(${cat.id},${sc.id},this.value)">
             <button class="btn btn-danger btn-sm" onclick="removeDepSub(${cat.id},${sc.id})" style="padding:2px 7px;font-size:11px;">✕</button>
           </div>`).join('')}
         <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
-          <input type="text" id="newSub_${cat.id}" placeholder="Nouvelle sous-catégorie…" 
+          <input type="text" id="newSub_${cat.id}" placeholder="Nouvelle sous-catégorie…"
             style="flex:1;padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-family:'Jost',sans-serif;font-size:12px;"
             onkeydown="if(event.key==='Enter')addDepSub(${cat.id})">
           <button class="btn btn-secondary btn-sm" onclick="addDepSub(${cat.id})">+ Ajouter</button>
@@ -1385,7 +1637,8 @@ function renderDepenses(){
       </div>
     </div>`).join('');
 
-  // ── Saisie des montants ──
+  // Panneau droit : saisie des montants
+  // Les postes lieBudget sont en lecture seule (calculés automatiquement)
   saisie.innerHTML=state.depenses.map(cat=>`
     <div style="margin-bottom:20px;">
       <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:500;color:var(--dark);margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--gold-pale);">
@@ -1393,7 +1646,7 @@ function renderDepenses(){
       </div>
       ${cat.sousCategories.map(sc=>{
         const isdef=(sc.statut==='definitif');
-        const isLinked=!!sc.lieBudget; // Poste lié au budget repas — calculé automatiquement
+        const isLinked=!!sc.lieBudget;
         return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;${isLinked?'background:var(--gold-pale);margin:0 -4px;padding:8px 4px;border-radius:4px;':''}">
           <span style="font-size:13px;color:var(--text);flex:1;min-width:120px;">
             ${sc.nom}
@@ -1423,42 +1676,33 @@ function renderDepenses(){
         </div>`;}).join('')}
     </div>`).join('');
 
-  // ── Récapitulatif ──
-  // Calcul repas depuis budget invités
-  const vhP=state.guests.filter(g=>g.relig_type!=='non').reduce((s,g)=>s+g.nb,0);
+  // Récapitulatif global
+  const vhP2=state.guests.filter(g=>g.relig_type!=='non').reduce((s,g)=>s+g.nb,0);
   const vhNon=state.guests.filter(g=>(g.relig_type==='vh'||g.relig_type==='repas')&&g.relig_rep_vh==='non').reduce((s,g)=>s+g.nb,0);
   const repasInv=state.guests.filter(g=>g.relig_type==='repas').reduce((s,g)=>s+g.nb,0);
   const repasNon=state.guests.filter(g=>g.relig_type==='repas'&&g.relig_rep_repas==='non').reduce((s,g)=>s+g.nb,0);
   const vhOui=state.guests.filter(g=>g.relig_rep_vh==='oui').reduce((s,g)=>s+g.nb,0);
-  const repasOui=state.guests.filter(g=>g.relig_rep_repas==='oui').reduce((s,g)=>s+g.nb,0);
-
-  const estVHmax=vhP-vhNon;
+  const estVHmax=vhP2-vhNon;
   const estRepasMax=repasInv-repasNon;
-
-  // Tarifs repas
   const tarifVH=state.budgetLines.find(l=>l.label.toLowerCase().includes('vin')||l.label.toLowerCase().includes('honneur'))?.amount||0;
   const tarifRepasA=state.budgetLines.find(l=>l.label.toLowerCase().includes('adulte'))?.amount||0;
   const tarifRepasE=state.budgetLines.find(l=>l.label.toLowerCase().includes('enfant'))?.amount||0;
-  const menus_adulte_oui=state.guests.filter(g=>g.relig_rep_repas==='oui').reduce((s,g)=>s+(g.menus_adulte||0),0);
-  const menus_enfant_oui=state.guests.filter(g=>g.relig_rep_repas==='oui').reduce((s,g)=>s+(g.menus_enfant||0),0);
-
+  const repasConf2=state.guests.filter(g=>g.relig_rep_repas==='oui');
+  const menus_adulte_oui=repasConf2.reduce((s,g)=>s+(g.menus_adulte||0),0);
+  const menus_enfant_oui=repasConf2.reduce((s,g)=>s+(g.menus_enfant||0),0);
   const repasEstMax=(estVHmax*tarifVH)+(estRepasMax*tarifRepasA);
   const repasEstConf=(vhOui*tarifVH)+(menus_adulte_oui*tarifRepasA)+(menus_enfant_oui*tarifRepasE);
 
-  // Total dépenses fixes — séparé définitif / estimé
-  let totalDef=0, totalEst=0;
-  let depRows='';
+  // Total des dépenses fixes (les postes lieBudget sont exclus = déjà dans repasEstMax)
+  let totalDef=0,totalEst=0,depRows='';
   state.depenses.forEach(cat=>{
     let catDef=0,catEst=0;
     cat.sousCategories.forEach(sc=>{
-      // Exclut les postes liés au budget (Restauration) du total fixe —
-      // ils sont déjà comptabilisés séparément via repasEstMax / repasEstConf
       if(sc.lieBudget) return;
-      if(sc.statut==='definitif') catDef+=sc.montant||0;
-      else catEst+=sc.montant||0;
+      if(sc.statut==='definitif') catDef+=sc.montant||0; else catEst+=sc.montant||0;
     });
     const catTotal=catDef+catEst;
-    totalDef+=catDef; totalEst+=catEst;
+    totalDef+=catDef;totalEst+=catEst;
     if(catTotal>0){
       depRows+=`<tr style="background:var(--gold-pale);">
         <td style="font-weight:500;font-family:'Cormorant Garamond',serif;font-size:15px;">${cat.nom}</td>
@@ -1504,12 +1748,10 @@ function renderDepenses(){
         </div>
       </div>
     </div>
-
     <div class="table-wrap" style="margin-bottom:16px;">
       <table>
         <thead><tr>
-          <th>Catégorie / Poste</th>
-          <th style="text-align:center;">Statut</th>
+          <th>Catégorie / Poste</th><th style="text-align:center;">Statut</th>
           <th style="text-align:right;color:#4a7c5c;">Définitif</th>
           <th style="text-align:right;color:#856404;">Estimé</th>
           <th style="text-align:right;">Total</th>
@@ -1533,7 +1775,6 @@ function renderDepenses(){
         </tbody>
       </table>
     </div>
-
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
       <div style="background:var(--dark);color:var(--gold-light);border-radius:10px;padding:20px 24px;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Budget total (estimation max)</div>
@@ -1548,7 +1789,7 @@ function renderDepenses(){
     </div>`;
 }
 
-// Gestion catégories dépenses
+// CRUD dépenses
 async function addDepCat(){
   const v=$('newDepCat').value.trim();if(!v)return;
   state.depenses.push({id:state.depNextCatId++,nom:v,sousCategories:[]});
@@ -1558,9 +1799,7 @@ async function removeDepCat(id){
   if(!confirm('Supprimer cette catégorie et toutes ses sous-catégories ?'))return;
   state.depenses=state.depenses.filter(c=>c.id!==id);await dbSaveDepenses();renderDepenses();
 }
-async function renameDepCat(id,val){
-  const c=state.depenses.find(x=>x.id===id);if(c){c.nom=val;await dbSaveDepenses();}
-}
+async function renameDepCat(id,val){const c=state.depenses.find(x=>x.id===id);if(c){c.nom=val;await dbSaveDepenses();}}
 async function addDepSub(catId){
   const inp=$(`newSub_${catId}`);if(!inp)return;
   const v=inp.value.trim();if(!v)return;
@@ -1575,19 +1814,30 @@ async function removeDepSub(catId,subId){
 }
 async function renameDepSub(catId,subId,val){
   const cat=state.depenses.find(c=>c.id===catId);if(!cat)return;
-  const sub=cat.sousCategories.find(s=>s.id===subId);if(sub){sub.nom=val;await dbSaveDepenses();}
+  const sub=cat.sousCategories.find(s=>s.id===subId);
+  if(sub){sub.nom=val;await dbSaveDepenses();}
 }
 async function updateDepMontant(catId,subId,val){
   const cat=state.depenses.find(c=>c.id===catId);if(!cat)return;
-  const sub=cat.sousCategories.find(s=>s.id===subId);if(sub){sub.montant=val;await dbSaveDepenses();renderDepenses();}
+  const sub=cat.sousCategories.find(s=>s.id===subId);
+  if(sub){sub.montant=val;await dbSaveDepenses();renderDepenses();}
 }
 async function updateDepStatut(catId,subId,statut){
   const cat=state.depenses.find(c=>c.id===catId);if(!cat)return;
-  const sub=cat.sousCategories.find(s=>s.id===subId);if(sub){sub.statut=statut;await dbSaveDepenses();renderDepenses();}
+  const sub=cat.sousCategories.find(s=>s.id===subId);
+  if(sub){sub.statut=statut;await dbSaveDepenses();renderDepenses();}
 }
 
-// ══ IMPORT ══
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 13. IMPORT — NOUVELLE LISTE D'INVITÉS
+//    Import en masse depuis un CSV.
+//    Format : Nom ; Catégorie ; NbPersonnes ; InvitéCivil ; InvitéReligieux
+//    Les nouvelles catégories sont créées automatiquement.
+// ════════════════════════════════════════════════════════════════════════════════
+
 let importedRows=[];
+
 function handleFileImport(event){
   const file=event.target.files[0];if(!file)return;
   const reader=new FileReader();
@@ -1605,6 +1855,7 @@ function handleFileImport(event){
   };
   reader.readAsText(file,'UTF-8');
 }
+
 async function confirmImport(){
   if(!importedRows.length)return;
   let added=0;
@@ -1612,16 +1863,20 @@ async function confirmImport(){
     const nom=r['Nom']||r['nom']||r['NOM']||Object.values(r)[0];if(!nom)continue;
     const cat=r['Catégorie']||r['categorie']||r['Categorie']||'';
     if(cat&&!state.categories.includes(cat))state.categories.push(cat);
-    const g=makeGuest(nom.trim(),cat||state.categories[0]||'Autres',
+    const g=makeGuest(
+      nom.trim(),
+      cat||state.categories[0]||'Autres',
       parseInt(r['NbPersonnes']||r['Nb']||1)||1,
       (r['InvitéCivil']||r['Civil']||'non').toLowerCase().includes('oui')?'oui':'non',
-      parseRT(r['InvitéReligieux']||r['Religieux']||'non'));
+      parseRT(r['InvitéReligieux']||r['Religieux']||'non')
+    );
     state.guests.push(g);await dbSaveGuest(g);added++;
   }
   await dbSaveCategories();renderAll();
   $('importPreview').style.display='none';$('fileInput').value='';importedRows=[];
   alert(`✅ ${added} invité(s) importé(s) avec succès !`);
 }
+
 function parseRT(v){
   if(!v)return'non';const lv=v.toLowerCase().trim();
   if(lv.includes('repas'))return'repas';
@@ -1635,7 +1890,16 @@ function downloadTemplate(){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='modele-invites.csv';a.click();
 }
 
-// ══ IMPORT MISE À JOUR RÉPONSES ══
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 14. IMPORT — MISE À JOUR DES RÉPONSES
+//    Met à jour les réponses d'invités existants depuis un CSV.
+//    Règles :
+//      - Cellule vide = conserver la valeur existante
+//      - Identification par Nom + Catégorie (résout les homonymes)
+//      - Option remise à zéro avant import
+// ════════════════════════════════════════════════════════════════════════════════
+
 let majRows=[];
 
 function handleMajImport(event){
@@ -1645,38 +1909,33 @@ function handleMajImport(event){
     const lines=e.target.result.split(/\r?\n/).filter(l=>l.trim());
     const headers=lines[0].split(/[;,]/).map(h=>h.trim().replace(/^\uFEFF/,'').replace(/[^\x20-\x7E\u00C0-\u024F]/g,''));
     majRows=lines.slice(1).map(line=>{
-      // Découpe en respectant les guillemets éventuels
       const cols=line.split(/[;,]/).map(c=>c.trim().replace(/^"|"$/g,'').replace(/^\s+|\s+$/g,''));
       const obj={};headers.forEach((h,i)=>obj[h]=cols[i]!==undefined?cols[i]:'');return obj;
     }).filter(r=>(r[headers[0]]||'').trim()!=='');
-
-    // Aperçu
     $('importMajPreview').style.display='';
     $('importMajPreviewHead').innerHTML=headers.map(h=>`<th>${h}</th>`).join('');
     $('importMajPreviewBody').innerHTML=majRows.slice(0,5).map(r=>`<tr>${headers.map(h=>`<td>${r[h]||''}</td>`).join('')}</tr>`).join('');
-    if(majRows.length>5) $('importMajPreviewBody').innerHTML+=`<tr><td colspan="${headers.length}" style="text-align:center;color:var(--muted);padding:8px;">… et ${majRows.length-5} autres lignes</td></tr>`;
-
-    // Diagnostic : cherche chaque ligne avec nom + catégorie
-    let found=0, notfound=[], ambiguous=[];
+    if(majRows.length>5)$('importMajPreviewBody').innerHTML+=`<tr><td colspan="${headers.length}" style="text-align:center;color:var(--muted);padding:8px;">… et ${majRows.length-5} autres lignes</td></tr>`;
+    // Diagnostic de correspondance
+    let found=0,notfound=[],ambiguous=[];
     majRows.forEach(r=>{
       const nom=(r['Nom']||r['nom']||'').trim();
       const cat=(r['Catégorie']||r['categorie']||r['Categorie']||'').trim();
-      if(!nom) return;
-      const matches = findGuests(nom, cat);
+      if(!nom)return;
+      const matches=findGuests(nom,cat);
       if(matches.length===1) found++;
       else if(matches.length===0) notfound.push(cat?`${nom} (${cat})`:nom);
       else ambiguous.push(`${nom} — précisez la Catégorie`);
     });
-
     const stats=$('importMajStats');
     if(stats){
       let html=`<strong style="color:var(--green);">✓ ${found} invité(s) identifié(s) avec certitude</strong>`;
-      if(ambiguous.length) html+=`<br><span style="color:var(--gold);">⚠️ ${ambiguous.length} doublon(s) de nom :</span><ul style="margin:4px 0 4px 16px;font-size:12px;">${ambiguous.map(a=>`<li>${a}</li>`).join('')}</ul>`;
-      if(notfound.length) html+=`<br><span style="color:var(--red);">✗ ${notfound.length} introuvable(s) : ${notfound.slice(0,5).map(n=>`<em>${n}</em>`).join(', ')}${notfound.length>5?' …':''}</span>`;
+      if(ambiguous.length)html+=`<br><span style="color:var(--gold);">⚠️ ${ambiguous.length} doublon(s) de nom :</span><ul style="margin:4px 0 4px 16px;font-size:12px;">${ambiguous.map(a=>`<li>${a}</li>`).join('')}</ul>`;
+      if(notfound.length)html+=`<br><span style="color:var(--red);">✗ ${notfound.length} introuvable(s) : ${notfound.slice(0,5).map(n=>`<em>${n}</em>`).join(', ')}${notfound.length>5?' …':''}</span>`;
       html+=`<br><br><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:10px 14px;background:var(--red-light);border-radius:6px;border:1px solid #e0b0b0;">
         <input type="checkbox" id="chkResetReponses" style="width:16px;height:16px;accent-color:var(--red);">
         <span><strong style="color:var(--red);">Remettre à zéro toutes les réponses avant l'import</strong><br>
-        <span style="font-size:11px;color:var(--muted);">Cochez si votre fichier contient l'ensemble des réponses connues à ce jour — efface d'abord toutes les réponses existantes, puis applique le fichier.</span></span>
+        <span style="font-size:11px;color:var(--muted);">Cochez si votre fichier contient l'ensemble des réponses connues à ce jour.</span></span>
       </label>`;
       html+=`<br><span style="color:var(--muted);font-size:12px;">Sans cette option : colonnes vides = données existantes conservées.</span>`;
       stats.innerHTML=html;
@@ -1685,77 +1944,47 @@ function handleMajImport(event){
   reader.readAsText(file,'UTF-8');
 }
 
-// Normalise un nom pour la comparaison (minuscules, sans accents, espaces compressés)
-function normName(s){
-  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
-}
-
-function parseOuiNon(v){
-  if(!v||v.trim()==='') return null;          // vide → ne pas modifier
-  if(v.toLowerCase().includes('oui')) return 'oui';
-  if(v.toLowerCase().includes('non')) return 'non';
-  return null;                                 // valeur non reconnue → ne pas modifier
-}
-function parseBool(v){
-  if(!v||v.trim()==='') return null;
-  return v.toLowerCase().includes('oui');
-}
-
 async function confirmMajImport(){
-  if(!majRows.length) return;
-
-  const doReset = $('chkResetReponses')?.checked || false;
-
-  // Si option remise à zéro : efface toutes les réponses en base avant d'appliquer le fichier
+  if(!majRows.length)return;
+  const doReset=$('chkResetReponses')?.checked||false;
   if(doReset){
     setSyncStatus('syncing','⏳ Remise à zéro…');
     state.guests.forEach(g=>{
-      g.civil_rep=null; g.civil_repondu=false;
-      g.relig_remise=false; g.relig_repondu=false;
-      g.relig_rep_vh=null; g.relig_rep_repas=null;
-      g.menus_adulte=0; g.menus_enfant=0;
+      g.civil_rep=null;g.civil_repondu=false;
+      g.relig_remise=false;g.relig_repondu=false;
+      g.relig_rep_vh=null;g.relig_rep_repas=null;
+      g.menus_adulte=0;g.menus_enfant=0;
     });
-    // Sauvegarde en masse
-    for(const g of state.guests) await dbSaveGuest(g);
+    for(const g of state.guests)await dbSaveGuest(g);
   }
-
-  let updated=0, skipped=0, ambig=0;
-
+  let updated=0,skipped=0,ambig=0;
   for(const r of majRows){
-    const nom=(r['Nom']||r['nom']||'').trim();
-    if(!nom) continue;
+    const nom=(r['Nom']||r['nom']||'').trim();if(!nom)continue;
     const cat=(r['Catégorie']||r['categorie']||r['Categorie']||'').trim();
     const matches=findGuests(nom,cat);
-
-    if(matches.length===0){ skipped++; continue; }
-    if(matches.length>1){ ambig++; continue; }
+    if(matches.length===0){skipped++;continue;}
+    if(matches.length>1){ambig++;continue;}
     const g=matches[0];
-
-    const civilRep    = parseOuiNon(r['CivilReponse']);
-    const religRemise = parseBool(r['ReligInvitationRemise']);
-    const religRepVH  = parseOuiNon(r['ReligReponseVH']);
-    const religRepRep = parseOuiNon(r['ReligReponseRepas']);
-    const menusA      = (r['MenusAdulte']||'').trim()!=='' ? parseInt(r['MenusAdulte'])||0 : null;
-    const menusE      = (r['MenusEnfant']||'').trim()!=='' ? parseInt(r['MenusEnfant'])||0 : null;
-
-    if(civilRep    !== null){ g.civil_rep        = civilRep;    g.civil_repondu  = true; }
-    if(religRemise !== null)  g.relig_remise      = religRemise;
-    if(religRepVH  !== null){ g.relig_rep_vh      = religRepVH;  g.relig_repondu  = true; }
-    if(religRepRep !== null){ g.relig_rep_repas   = religRepRep; g.relig_repondu  = true; }
-    if(menusA      !== null)  g.menus_adulte      = menusA;
-    if(menusE      !== null)  g.menus_enfant      = menusE;
-
-    await dbSaveGuest(g);
-    updated++;
+    const civilRep    =parseOuiNon(r['CivilReponse']);
+    const religRemise =parseBool(r['ReligInvitationRemise']);
+    const religRepVH  =parseOuiNon(r['ReligReponseVH']);
+    const religRepRep =parseOuiNon(r['ReligReponseRepas']);
+    const menusA=(r['MenusAdulte']||'').trim()!==''?parseInt(r['MenusAdulte'])||0:null;
+    const menusE=(r['MenusEnfant']||'').trim()!==''?parseInt(r['MenusEnfant'])||0:null;
+    if(civilRep   !==null){g.civil_rep=civilRep;g.civil_repondu=true;}
+    if(religRemise!==null) g.relig_remise=religRemise;
+    if(religRepVH !==null){g.relig_rep_vh=religRepVH;g.relig_repondu=true;}
+    if(religRepRep!==null){g.relig_rep_repas=religRepRep;g.relig_repondu=true;}
+    if(menusA     !==null) g.menus_adulte=menusA;
+    if(menusE     !==null) g.menus_enfant=menusE;
+    await dbSaveGuest(g);updated++;
   }
-
-  cancelMajImport();
-  renderAll();
-  let msg=`✅ Mise à jour terminée !`;
-  if(doReset) msg+=`\n↺ Réponses précédentes effacées avant import`;
+  cancelMajImport();renderAll();
+  let msg='✅ Mise à jour terminée !';
+  if(doReset)msg+='\n↺ Réponses précédentes effacées avant import';
   msg+=`\n\n✓ ${updated} invité(s) mis à jour`;
-  if(skipped) msg+=`\n✗ ${skipped} ligne(s) ignorée(s) (nom introuvable)`;
-  if(ambig)   msg+=`\n⚠️ ${ambig} ligne(s) ignorée(s) (doublon — ajoutez la colonne Catégorie)`;
+  if(skipped)msg+=`\n✗ ${skipped} ligne(s) ignorée(s) (nom introuvable)`;
+  if(ambig)  msg+=`\n⚠️ ${ambig} ligne(s) ignorée(s) (doublon — ajoutez la colonne Catégorie)`;
   alert(msg);
 }
 
@@ -1765,33 +1994,55 @@ function cancelMajImport(){
   majRows=[];
 }
 
-// Recherche un invité par nom + catégorie optionnelle
-// - Si catégorie fournie : cherche nom ET catégorie (résout les doublons)
-// - Si pas de catégorie  : cherche sur le nom seul (peut retourner plusieurs résultats)
-function findGuests(nom, cat){
-  const n=normName(nom);
-  const c=normName(cat);
-  if(c){
-    // Cherche d'abord nom + catégorie exacte
-    const exact=state.guests.filter(g=>normName(g.nom)===n && normName(g.cat)===c);
-    if(exact.length>0) return exact;
-  }
-  // Fallback : nom seul
-  return state.guests.filter(g=>normName(g.nom)===n);
-}
-
 function downloadMajTemplate(){
-  // Génère un CSV pré-rempli avec les noms ET catégories des invités existants
   const headers='Nom;Catégorie;CivilReponse;ReligInvitationRemise;ReligReponseVH;ReligReponseRepas;MenusAdulte;MenusEnfant';
-  const rows=state.guests.map(g=>`${g.nom};${g.cat};;;;;;`).join('\n');
+  const rows=sortGuests(state.guests).map(g=>`${g.nom};${g.cat};;;;;;`).join('\n');
   const csv=headers+'\n'+rows+'\n';
   const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='maj-reponses.csv';a.click();
 }
 
-// ══ EXPORT CSV ══
+// Utilitaires partagés par les imports
+
+// Normalise un texte (minuscules, sans accents) pour comparer sans erreur de frappe
+function normName(s){
+  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+}
+
+// Interprète oui/non depuis une cellule CSV (vide = null = ne pas modifier)
+function parseOuiNon(v){
+  if(!v||v.trim()==='') return null;
+  if(v.toLowerCase().includes('oui')) return 'oui';
+  if(v.toLowerCase().includes('non')) return 'non';
+  return null;
+}
+
+function parseBool(v){
+  if(!v||v.trim()==='') return null;
+  return v.toLowerCase().includes('oui');
+}
+
+// Cherche un invité par nom + catégorie optionnelle
+function findGuests(nom,cat){
+  const n=normName(nom);
+  const c=normName(cat);
+  if(c){
+    const exact=state.guests.filter(g=>normName(g.nom)===n&&normName(g.cat)===c);
+    if(exact.length>0)return exact;
+  }
+  return state.guests.filter(g=>normName(g.nom)===n);
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 15. EXPORT CSV (VERS EXCEL)
+//    5 exports disponibles : invités, civil, religieux, synthèse, dépenses.
+//    Le BOM UTF-8 (\uFEFF) garantit l'affichage des accents dans Excel.
+//    Séparateur : point-virgule (format français).
+// ════════════════════════════════════════════════════════════════════════════════
+
 function exportCSV(type){
-  let headers=[], rows=[], filename='';
+  let headers=[],rows=[],filename='';
   const oui=v=>v==='oui'?'oui':v==='non'?'non':'';
   const bool=v=>v?'oui':'non';
   const sorted=sortGuests(state.guests);
@@ -1808,24 +2059,25 @@ function exportCSV(type){
   }
   else if(type==='religieux'){
     filename='religieux.csv';
-    headers=['Nom','Catégorie','NbPersonnes','TypeInvitation','InvitationRemise','ARépondu','RéponseVH','RéponseRepas','MenusAdulte','MenusEnfant'];
+    headers=['Nom','Catégorie','NbPersonnes','TypeInvitation','InvitationRemise','ARépondu','RéponseVH','RéponseRepas','MenusAdulte','MenusEnfant','Régime'];
     rows=sorted.filter(g=>g.relig_type!=='non').map(g=>[
-      g.nom,g.cat,g.nb,g.relig_type,
-      bool(g.relig_remise),bool(g.relig_repondu),
+      g.nom,g.cat,g.nb,g.relig_type,bool(g.relig_remise),bool(g.relig_repondu),
       oui(g.relig_rep_vh),oui(g.relig_rep_repas),
       g.relig_type==='repas'?(g.menus_adulte||0):'',
-      g.relig_type==='repas'?(g.menus_enfant||0):''
+      g.relig_type==='repas'?(g.menus_enfant||0):'',
+      g.regime||''
     ]);
   }
   else if(type==='synthese'){
     filename='synthese-complete.csv';
-    headers=['Nom','Catégorie','NbPersonnes','InvitéCivil','RéponseCivil','TypeReligieux','InvitationRemise','ARéponduRelig','RéponseVH','RéponseRepas','MenusAdulte','MenusEnfant'];
+    headers=['Nom','Catégorie','NbPersonnes','InvitéCivil','RéponseCivil','TypeReligieux','InvitationRemise','ARéponduRelig','RéponseVH','RéponseRepas','MenusAdulte','MenusEnfant','Régime'];
     rows=sorted.map(g=>[
       g.nom,g.cat,g.nb,g.civil_inv,oui(g.civil_rep),
       g.relig_type,bool(g.relig_remise),bool(g.relig_repondu),
       oui(g.relig_rep_vh),oui(g.relig_rep_repas),
       g.relig_type==='repas'?(g.menus_adulte||0):'',
-      g.relig_type==='repas'?(g.menus_enfant||0):''
+      g.relig_type==='repas'?(g.menus_enfant||0):'',
+      g.regime||''
     ]);
   }
   else if(type==='depenses'){
@@ -1838,7 +2090,6 @@ function exportCSV(type){
     });
   }
 
-  // Construction du CSV
   const escape=v=>{
     const s=String(v??'');
     return s.includes(';')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s;
@@ -1848,28 +2099,25 @@ function exportCSV(type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();
 }
 
-// ══════════════════════════════════════════════════════════
-// SAUVEGARDES HORODATÉES
-// Système de sauvegarde manuelle et automatique.
-// Chaque sauvegarde stocke un snapshot JSON complet
-// (invités + catégories + budget + dépenses) dans la
-// table "backups" de Supabase, avec un horodatage précis.
-// Les 20 sauvegardes les plus récentes sont conservées.
-// ══════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 16. SAUVEGARDES HORODATÉES
+//    Deux modes : manuel (bouton 💾) et automatique (timer configurable).
+//    Chaque sauvegarde = snapshot JSON complet dans la table "backups".
+//    20 sauvegardes max conservées (les plus anciennes sont supprimées).
+//    Avant toute restauration, une sauvegarde de sécurité est créée.
+// ════════════════════════════════════════════════════════════════════════════════
 
 let autoBackupTimer   = null;
 let autoBackupActive  = false;
 let autoBackupMinutes = 30;
 
+// Construit un snapshot complet de toutes les données
 function buildSnapshot() {
-  return {
-    guests:      state.guests,
-    categories:  state.categories,
-    budgetLines: state.budgetLines,
-    depenses:    state.depenses,
-  };
+  return { guests: state.guests, categories: state.categories, budgetLines: state.budgetLines, depenses: state.depenses };
 }
 
+// Formate une date ISO en texte lisible en français
 function formatDate(isoStr) {
   const d = new Date(isoStr);
   return d.toLocaleDateString('fr-FR', {day:'2-digit',month:'long',year:'numeric'})
@@ -1879,11 +2127,9 @@ function formatDate(isoStr) {
 async function saveBackupNow() {
   setSyncStatus('syncing','⏳ Sauvegarde…');
   try {
-    const snapshot = buildSnapshot();
-    const now = new Date().toISOString();
     const { error } = await db.from('backups').insert({
-      created_at: now, type: 'manual', label: 'Sauvegarde manuelle',
-      data: JSON.stringify(snapshot)
+      created_at: new Date().toISOString(), type: 'manual', label: 'Sauvegarde manuelle',
+      data: JSON.stringify(buildSnapshot())
     });
     if(error) throw error;
     await pruneOldBackups();
@@ -1900,11 +2146,10 @@ async function saveBackupNow() {
 async function saveAutoBackup() {
   setSyncStatus('syncing','⏳ Auto-sauvegarde…');
   try {
-    const snapshot = buildSnapshot();
-    const now = new Date().toISOString();
     const { error } = await db.from('backups').insert({
-      created_at: now, type: 'auto', label: `Auto — toutes les ${autoBackupMinutes} min`,
-      data: JSON.stringify(snapshot)
+      created_at: new Date().toISOString(), type: 'auto',
+      label: `Auto — toutes les ${autoBackupMinutes} min`,
+      data: JSON.stringify(buildSnapshot())
     });
     if(error) throw error;
     await pruneOldBackups();
@@ -1924,8 +2169,7 @@ function toggleAutoBackup(enabled) {
 
 function startAutoBackup() {
   stopAutoBackup();
-  const ms = autoBackupMinutes * 60 * 1000;
-  autoBackupTimer = setInterval(saveAutoBackup, ms);
+  autoBackupTimer = setInterval(saveAutoBackup, autoBackupMinutes * 60 * 1000);
   const el = $('autoBackupStatus');
   if(el) el.textContent = `🔄 Auto ${autoBackupMinutes} min`;
   updateNextBackupInfo();
@@ -1956,15 +2200,13 @@ async function pruneOldBackups() {
   try {
     const { data } = await db.from('backups').select('id').order('created_at', {ascending:false});
     if(data && data.length > 20) {
-      const toDelete = data.slice(20).map(r => r.id);
-      await db.from('backups').delete().in('id', toDelete);
+      await db.from('backups').delete().in('id', data.slice(20).map(r => r.id));
     }
   } catch(e) { console.error(e); }
 }
 
 async function renderBackupList() {
-  const container = $('backupList');
-  if(!container) return;
+  const container = $('backupList'); if(!container) return;
   try {
     const { data: backups, error } = await db.from('backups')
       .select('id, created_at, type, label, data')
@@ -1976,8 +2218,6 @@ async function renderBackupList() {
     }
     container.innerHTML = backups.map(b => {
       const snap = (() => { try { return JSON.parse(b.data); } catch(e){ return null; } })();
-      const nbGuests = snap?.guests?.length ?? '?';
-      const nbDep = snap?.depenses?.reduce((s,c)=>s+c.sousCategories.length,0) ?? '?';
       const isAuto = b.type === 'auto';
       return `<div class="backup-row">
         <div class="backup-meta">
@@ -1985,18 +2225,18 @@ async function renderBackupList() {
             <span class="backup-badge ${isAuto?'badge-auto':'badge-manual'}">${isAuto?'Auto':'Manuel'}</span>
             &nbsp;${formatDate(b.created_at)}
           </div>
-          <div class="backup-info">${nbGuests} invité(s) · ${nbDep} poste(s) de dépense</div>
+          <div class="backup-info">${snap?.guests?.length??'?'} invité(s) · ${snap?.depenses?.reduce((s,c)=>s+c.sousCategories.length,0)??'?'} poste(s)</div>
         </div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-secondary btn-sm" onclick="previewBackup('${b.id}')" title="Voir le contenu">👁️ Aperçu</button>
-          <button class="btn btn-danger btn-sm" onclick="restoreBackup('${b.id}','${formatDate(b.created_at).replace(/'/g,"\\'")}')" title="Restaurer">↺ Restaurer</button>
-          <button class="btn btn-outline btn-sm" onclick="deleteBackup('${b.id}')" title="Supprimer">🗑️</button>
+          <button class="btn btn-secondary btn-sm" onclick="previewBackup('${b.id}')">👁️ Aperçu</button>
+          <button class="btn btn-danger btn-sm" onclick="restoreBackup('${b.id}','${formatDate(b.created_at).replace(/'/g,"\\'")}')" >↺ Restaurer</button>
+          <button class="btn btn-outline btn-sm" onclick="deleteBackup('${b.id}')">🗑️</button>
         </div>
       </div>`;
     }).join('');
   } catch(e) {
     console.error(e);
-    container.innerHTML = '<div style="text-align:center;color:var(--red);padding:24px;font-size:13px;">Erreur de chargement des sauvegardes.</div>';
+    container.innerHTML = '<div style="text-align:center;color:var(--red);padding:24px;font-size:13px;">Erreur de chargement.</div>';
   }
 }
 
@@ -2020,28 +2260,17 @@ async function restoreBackup(id, dateLabel) {
     const { data } = await db.from('backups').select('data').eq('id',id).single();
     if(!data) throw new Error('Sauvegarde introuvable');
     const snap = JSON.parse(data.data);
-
+    // Sauvegarde de sécurité automatique avant d'écraser
     await db.from('backups').insert({
       created_at: new Date().toISOString(), type: 'manual', label: 'Avant restauration (auto)',
       data: JSON.stringify(buildSnapshot())
     });
-
     await db.from('guests').delete().neq('id',0);
     for(const g of (snap.guests||[])) await db.from('guests').upsert(g,{onConflict:'id'});
-
-    if(snap.categories){
-      await db.from('categories').delete().neq('nom','___');
-      await db.from('categories').insert(snap.categories.map(nom=>({nom})));
-    }
-    if(snap.budgetLines){
-      for(const l of snap.budgetLines) await db.from('budget_lines').upsert(l,{onConflict:'id'});
-    }
-    if(snap.depenses){
-      await db.from('depenses').upsert({id:1,data:JSON.stringify(snap.depenses)},{onConflict:'id'});
-    }
-
-    await loadData();
-    renderAll();
+    if(snap.categories){ await db.from('categories').delete().neq('nom','___'); await db.from('categories').insert(snap.categories.map(nom=>({nom}))); }
+    if(snap.budgetLines){ for(const l of snap.budgetLines) await db.from('budget_lines').upsert(l,{onConflict:'id'}); }
+    if(snap.depenses){ await db.from('depenses').upsert({id:1,data:JSON.stringify(snap.depenses)},{onConflict:'id'}); }
+    await loadData(); renderAll();
     setSyncStatus('ok','✓ Synchronisé');
     alert('✅ Restauration réussie !\n\nUne sauvegarde de sécurité de l\'état précédent a été créée automatiquement.');
   } catch(e) {
@@ -2056,6 +2285,7 @@ async function deleteBackup(id) {
   catch(e) { console.error(e); }
 }
 
+// Restaure les préférences de sauvegarde auto depuis le navigateur (localStorage)
 function initBackupPreferences() {
   const saved = localStorage.getItem('autoBackupEnabled');
   const savedMin = parseInt(localStorage.getItem('autoBackupMinutes')) || 30;
@@ -2069,17 +2299,17 @@ function initBackupPreferences() {
   }
 }
 
-// ════════════════════════════════════════════════════════
-// RÈGLEMENTS
-// Suivi des paiements effectués par catégorie de dépense.
-// Plusieurs règlements possibles par poste budgétaire.
-// Stocké en JSON dans la table "reglements" (id=1).
-// Synthèse par personne et par poste (prévu vs payé).
-// ════════════════════════════════════════════════════════
 
-// Popule les selects de la feuille Règlements
+// ════════════════════════════════════════════════════════════════════════════════
+// 17. RÈGLEMENTS
+//    Suivi des paiements par poste budgétaire.
+//    Plusieurs règlements par poste (acomptes, soldes…).
+//    Payeur = choisi dans la liste des invités.
+//    Deux synthèses : par personne et par poste (avec barre de progression).
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Initialise les menus déroulants de la feuille Règlements
 function renderReglementsSelects() {
-  // Catégories de dépenses
   const regCatEl = $('reg_cat');
   if(regCatEl) {
     const oldCat = regCatEl.value;
@@ -2087,8 +2317,6 @@ function renderReglementsSelects() {
     if(oldCat) regCatEl.value = oldCat;
     updateRegSubCat();
   }
-
-  // Filtre catégorie dans l'historique
   const filterCat = $('filterRegCat');
   if(filterCat) {
     const old = filterCat.value;
@@ -2096,14 +2324,10 @@ function renderReglementsSelects() {
       + state.depenses.map(c=>`<option value="${c.nom}">${c.nom}</option>`).join('');
     filterCat.value = old||'';
   }
-
-  // Payeur = liste des invités (triée)
   const payeurOpts = '<option value="">-- Choisir --</option>'
     + sortGuests(state.guests).map(g=>`<option value="${g.nom}">${g.nom}</option>`).join('');
   const regPayeur = $('reg_payeur');
   if(regPayeur){ const old=regPayeur.value; regPayeur.innerHTML=payeurOpts; if(old)regPayeur.value=old; }
-
-  // Filtre payeur dans l'historique
   const filterPay = $('filterRegPayeur');
   if(filterPay) {
     const old = filterPay.value;
@@ -2112,23 +2336,19 @@ function renderReglementsSelects() {
       + payeurs.map(p=>`<option value="${p}">${p}</option>`).join('');
     filterPay.value = old||'';
   }
-
-  // Date par défaut = aujourd'hui
   const regDate = $('reg_date');
   if(regDate && !regDate.value) regDate.value = new Date().toISOString().slice(0,10);
 }
 
-// Met à jour la liste des sous-catégories selon la catégorie choisie
+// Met à jour les postes selon la catégorie sélectionnée
 function updateRegSubCat() {
   const catId = parseInt($('reg_cat')?.value);
   const cat = state.depenses.find(c=>c.id===catId);
-  const el = $('reg_subcat');
-  if(!el) return;
+  const el = $('reg_subcat'); if(!el) return;
   el.innerHTML = (cat?.sousCategories||[]).map(sc=>`<option value="${sc.id}">${sc.nom}</option>`).join('')
     || '<option value="">Aucun poste dans cette catégorie</option>';
 }
 
-// Ajoute un nouveau règlement
 async function addReglement() {
   const catId  = parseInt($('reg_cat')?.value);
   const subId  = parseInt($('reg_subcat')?.value);
@@ -2136,118 +2356,80 @@ async function addReglement() {
   const payeur  = $('reg_payeur')?.value;
   const date    = $('reg_date')?.value || new Date().toISOString().slice(0,10);
   const note    = $('reg_note')?.value.trim() || '';
-
   if(!montant)  return alert('Veuillez saisir un montant.');
   if(!payeur)   return alert('Veuillez choisir un payeur.');
-
   const cat = state.depenses.find(c=>c.id===catId);
   const sub = cat?.sousCategories.find(s=>s.id===subId);
   if(!cat||!sub) return alert('Veuillez choisir une catégorie et un poste.');
-
-  const reg = {
-    id:      state.regNextId++,
-    catId, catNom:  cat.nom,
-    subId, subNom:  sub.nom,
-    montant, payeur, date, note
-  };
-
-  state.reglements.push(reg);
+  state.reglements.push({ id: state.regNextId++, catId, catNom: cat.nom, subId, subNom: sub.nom, montant, payeur, date, note });
   await dbSaveReglements();
-
-  // Réinitialise le formulaire (sauf catégorie et payeur)
   const mEl = $('reg_montant'); if(mEl) mEl.value='';
   const nEl = $('reg_note');    if(nEl) nEl.value='';
-
   renderReglements();
 }
 
-// Supprime un règlement
 async function deleteReglement(id) {
   if(!confirm('Supprimer ce règlement ?')) return;
   state.reglements = state.reglements.filter(r=>r.id!==id);
-  await dbSaveReglements();
-  renderReglements();
+  await dbSaveReglements(); renderReglements();
 }
 
-// Ouvre la modale de modification avec les valeurs actuelles du règlement
+// Ouvre la fenêtre de modification d'un règlement
 function openEditReglement(id) {
-  const r = state.reglements.find(x=>x.id===id);
-  if(!r) return;
+  const r = state.reglements.find(x=>x.id===id); if(!r) return;
   $('editRegId').value = id;
-
-  // Catégories de dépenses
   const catEl = $('editReg_cat');
   catEl.innerHTML = state.depenses.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
   catEl.value = String(r.catId);
   updateEditRegSubCat(r.subId);
-
-  // Montant, date, note
   $('editReg_montant').value = r.montant;
   $('editReg_date').value    = r.date;
   $('editReg_note').value    = r.note||'';
-
-  // Payeurs
   const payEl = $('editReg_payeur');
   payEl.innerHTML = sortGuests(state.guests).map(g=>`<option value="${g.nom}">${g.nom}</option>`).join('');
   payEl.value = r.payeur;
-
   $('modalReglement').classList.add('open');
 }
 
-// Met à jour la liste des sous-catégories dans la modale d'édition
 function updateEditRegSubCat(selectSubId) {
   const catId = parseInt($('editReg_cat')?.value);
   const cat   = state.depenses.find(c=>c.id===catId);
-  const el    = $('editReg_subcat');
-  if(!el) return;
+  const el    = $('editReg_subcat'); if(!el) return;
   el.innerHTML = (cat?.sousCategories||[]).map(sc=>`<option value="${sc.id}">${sc.nom}</option>`).join('');
   if(selectSubId) el.value = String(selectSubId);
 }
 
-// Sauvegarde les modifications du règlement
 async function saveEditReglement() {
-  const id     = parseInt($('editRegId').value);
-  const r      = state.reglements.find(x=>x.id===id);
-  if(!r) return;
-
-  const catId  = parseInt($('editReg_cat').value);
-  const subId  = parseInt($('editReg_subcat').value);
-  const cat    = state.depenses.find(c=>c.id===catId);
-  const sub    = cat?.sousCategories.find(s=>s.id===subId);
-
-  r.catId   = catId;
-  r.catNom  = cat?.nom  || r.catNom;
-  r.subId   = subId;
-  r.subNom  = sub?.nom  || r.subNom;
-  r.montant = parseFloat($('editReg_montant').value) || 0;
-  r.payeur  = $('editReg_payeur').value;
-  r.date    = $('editReg_date').value;
-  r.note    = $('editReg_note').value.trim();
-
+  const id  = parseInt($('editRegId').value);
+  const r   = state.reglements.find(x=>x.id===id); if(!r) return;
+  const catId = parseInt($('editReg_cat').value);
+  const subId = parseInt($('editReg_subcat').value);
+  const cat   = state.depenses.find(c=>c.id===catId);
+  const sub   = cat?.sousCategories.find(s=>s.id===subId);
+  r.catId=catId; r.catNom=cat?.nom||r.catNom;
+  r.subId=subId; r.subNom=sub?.nom||r.subNom;
+  r.montant=parseFloat($('editReg_montant').value)||0;
+  r.payeur=$('editReg_payeur').value;
+  r.date=$('editReg_date').value;
+  r.note=$('editReg_note').value.trim();
   closeModal('modalReglement');
-  await dbSaveReglements();
-  renderReglements();
+  await dbSaveReglements(); renderReglements();
 }
 
-// Rendu complet de la feuille Règlements
+// Affiche toute la feuille Règlements
 function renderReglements() {
   renderReglementsSelects();
-
   const filterCat = $('filterRegCat')?.value || '';
   const filterPay = $('filterRegPayeur')?.value || '';
-
-  // Filtre les règlements
   const filtered = state.reglements.filter(r=>
-    (!filterCat || r.catNom === filterCat) &&
-    (!filterPay || r.payeur === filterPay)
+    (!filterCat || r.catNom === filterCat) && (!filterPay || r.payeur === filterPay)
   ).sort((a,b)=> b.date.localeCompare(a.date));
 
-  // Total filtré
   const total = filtered.reduce((s,r)=>s+r.montant,0);
   const regTotalEl = $('regTotal');
   if(regTotalEl) regTotalEl.textContent = `Total : ${total.toLocaleString('fr-FR')} €`;
 
-  // ── Tableau historique ──
+  // Tableau historique
   const tb = $('reglementsTbody');
   if(tb) {
     tb.innerHTML = filtered.map(r=>`<tr>
@@ -2258,14 +2440,14 @@ function renderReglements() {
       <td style="font-size:12px;color:var(--muted);">${r.note||'–'}</td>
       <td style="text-align:right;font-weight:500;color:var(--green);">${r.montant.toLocaleString('fr-FR')} €</td>
       <td style="display:flex;gap:6px;">
-        <button class="btn btn-secondary btn-sm" onclick="openEditReglement(${r.id})" title="Modifier">✏️</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteReglement(${r.id})" title="Supprimer">🗑️</button>
+        <button class="btn btn-secondary btn-sm" onclick="openEditReglement(${r.id})">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteReglement(${r.id})">🗑️</button>
       </td>
     </tr>`).join('')
     || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">Aucun règlement enregistré</td></tr>';
   }
 
-  // ── Synthèse par personne ──
+  // Synthèse par personne
   const byPersonne = {};
   state.reglements.forEach(r=>{
     if(!byPersonne[r.payeur]) byPersonne[r.payeur] = 0;
@@ -2277,40 +2459,31 @@ function renderReglements() {
     if(!Object.keys(byPersonne).length) {
       synPersonne.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:16px 0;">Aucun règlement pour l\'instant.</div>';
     } else {
-      synPersonne.innerHTML = `
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Payeur</th><th style="text-align:right;">Total payé</th><th style="text-align:right;">Part</th></tr></thead>
-            <tbody>
-              ${Object.entries(byPersonne)
-                .sort((a,b)=>b[1]-a[1])
-                .map(([nom,tot])=>`<tr>
-                  <td><strong>${nom}</strong></td>
-                  <td style="text-align:right;font-weight:500;color:var(--green);">${tot.toLocaleString('fr-FR')} €</td>
-                  <td style="text-align:right;color:var(--muted);font-size:12px;">${totalGlobal>0?Math.round(tot/totalGlobal*100):0} %</td>
-                </tr>`).join('')}
-              <tr style="background:var(--dark);">
-                <td style="color:var(--gold-light);font-weight:500;">Total</td>
-                <td style="text-align:right;color:var(--gold);font-weight:600;font-family:'Cormorant Garamond',serif;font-size:18px;">${totalGlobal.toLocaleString('fr-FR')} €</td>
-                <td></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>`;
+      synPersonne.innerHTML = `<div class="table-wrap"><table>
+        <thead><tr><th>Payeur</th><th style="text-align:right;">Total payé</th><th style="text-align:right;">Part</th></tr></thead>
+        <tbody>
+          ${Object.entries(byPersonne).sort((a,b)=>b[1]-a[1]).map(([nom,tot])=>`<tr>
+            <td><strong>${nom}</strong></td>
+            <td style="text-align:right;font-weight:500;color:var(--green);">${tot.toLocaleString('fr-FR')} €</td>
+            <td style="text-align:right;color:var(--muted);font-size:12px;">${totalGlobal>0?Math.round(tot/totalGlobal*100):0} %</td>
+          </tr>`).join('')}
+          <tr style="background:var(--dark);">
+            <td style="color:var(--gold-light);font-weight:500;">Total</td>
+            <td style="text-align:right;color:var(--gold);font-weight:600;font-family:'Cormorant Garamond',serif;font-size:18px;">${totalGlobal.toLocaleString('fr-FR')} €</td>
+            <td></td>
+          </tr>
+        </tbody></table></div>`;
     }
   }
 
-  // ── Synthèse par poste (prévu vs payé) ──
+  // Synthèse par poste : prévu vs payé avec barre de progression
   const synPostes = $('regSynthesePostes');
   if(synPostes) {
-    let rows = '';
-    let grandPrevu = 0, grandPaye = 0;
+    let rows = '', grandPrevu = 0, grandPaye = 0;
     state.depenses.forEach(cat=>{
       cat.sousCategories.forEach(sc=>{
         const prevu = sc.montant || 0;
-        const paye  = state.reglements
-          .filter(r=>r.catId===cat.id && r.subId===sc.id)
-          .reduce((s,r)=>s+r.montant, 0);
+        const paye  = state.reglements.filter(r=>r.catId===cat.id && r.subId===sc.id).reduce((s,r)=>s+r.montant, 0);
         const reste = prevu - paye;
         grandPrevu += prevu; grandPaye += paye;
         if(prevu > 0 || paye > 0) {
@@ -2336,8 +2509,7 @@ function renderReglements() {
     synPostes.innerHTML = rows
       ? `<div class="table-wrap"><table>
           <thead><tr><th>Catégorie</th><th>Poste</th><th style="text-align:right;">Prévu</th><th style="text-align:right;">Payé</th><th style="text-align:right;">Reste</th><th>Avancement</th></tr></thead>
-          <tbody>
-            ${rows}
+          <tbody>${rows}
             <tr style="background:var(--dark);">
               <td colspan="2" style="color:var(--gold-light);font-weight:500;font-family:'Cormorant Garamond',serif;">TOTAUX</td>
               <td style="text-align:right;color:var(--muted);">${grandPrevu.toLocaleString('fr-FR')} €</td>
@@ -2345,25 +2517,26 @@ function renderReglements() {
               <td style="text-align:right;color:${grandReste>0?'#ffc107':'var(--green-light)'};font-weight:600;">${grandReste>0?grandReste.toLocaleString('fr-FR')+' €':'✓ Tout soldé'}</td>
               <td></td>
             </tr>
-          </tbody>
-        </table></div>`
+          </tbody></table></div>`
       : '<div style="color:var(--muted);font-size:13px;padding:16px 0;">Aucun poste budgétaire défini dans la feuille Dépenses.</div>';
   }
 }
 
+// Formate YYYY-MM-DD en JJ/MM/AAAA
 function formatRegDate(d) {
   if(!d) return '–';
   const [y,m,j] = d.split('-');
   return `${j}/${m}/${y}`;
 }
 
-// ════════════════════════════════════════════════════════
-// PLAN DE TABLE
-// Affectation des invités (répondants au repas ou non-exclus)
-// à des tables nommées.
-// Structure state.tables : [{id, nom, places:[{guestId, guestNom, guestCat, nb}]}]
-// Stocké en JSON dans la table "tables" de Supabase (id=1).
-// ════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 18. PLAN DE TABLE
+//    Affectation des invités éligibles au repas aux tables nommées.
+//    Éligibles = invités repas n'ayant pas répondu absent.
+//    Rose = sans réponse. 🥗 = régime alimentaire affiché.
+//    Export CSV disponible pour l'organisateur de la soirée.
+// ════════════════════════════════════════════════════════════════════════════════
 
 async function dbSaveTables() {
   setSyncStatus('syncing','⏳ Sauvegarde…');
@@ -2373,71 +2546,53 @@ async function dbSaveTables() {
   } catch(e){ console.error(e); setSyncStatus('error','✗ Erreur sync'); }
 }
 
-// Retourne la liste des invités éligibles au repas (invités repas, sauf absents confirmés)
-// et non encore affectés à une table
+// Retourne les invités éligibles non encore placés
 function guestsEligiblesRepas() {
-  // Utilise des strings pour la comparaison afin d'éviter les problèmes de type (number vs string)
   const placed = new Set(state.tables.flatMap(t=>t.places.map(p=>String(p.guestId))));
-  return sortGuests(
-    state.guests.filter(g =>
-      g.relig_type === 'repas' &&        // invités au repas
-      g.relig_rep_repas !== 'non' &&     // pas absents confirmés
-      !placed.has(String(g.id))          // pas encore placés
-    )
-  );
+  return sortGuests(state.guests.filter(g =>
+    g.relig_type === 'repas' && g.relig_rep_repas !== 'non' && !placed.has(String(g.id))
+  ));
 }
 
-// Ajoute une nouvelle table
 async function addTable() {
   const nom = $('newTableName')?.value.trim();
   if(!nom) return alert('Veuillez saisir un nom de table.');
   state.tables.push({ id: state.tableNextId++, nom, places: [] });
   $('newTableName').value = '';
-  await dbSaveTables();
-  renderTables();
+  await dbSaveTables(); renderTables();
 }
 
-// Supprime une table (remet les invités dans la liste)
 async function deleteTable(tableId) {
   if(!confirm('Supprimer cette table ? Les invités affectés seront remis dans la liste.')) return;
   state.tables = state.tables.filter(t => t.id !== tableId);
-  await dbSaveTables();
-  renderTables();
+  await dbSaveTables(); renderTables();
 }
 
-// Renomme une table
 async function renameTable(tableId, val) {
   const t = state.tables.find(t=>t.id===tableId);
   if(t){ t.nom = val; await dbSaveTables(); }
 }
 
-// Affecte un invité à une table
+// Affecte un invité à une table (gère les types string/number)
 async function assignToTable(guestId, tableId) {
-  // Normalise les types : les ids peuvent arriver en string depuis le HTML
   const gid = isNaN(guestId) ? guestId : Number(guestId);
   const tid = Number(tableId);
   const g = state.guests.find(x=>x.id===gid || String(x.id)===String(gid));
   const t = state.tables.find(x=>x.id===tid);
   if(!g||!t) { console.warn('assignToTable: invité ou table introuvable', gid, tid); return; }
-  // Vérifie qu'il n'est pas déjà placé
   if(state.tables.some(tb=>tb.places.some(p=>String(p.guestId)===String(gid)))) return;
   t.places.push({ guestId: g.id, guestNom: g.nom, guestCat: g.cat, nb: g.nb });
-  await dbSaveTables();
-  renderTables();
+  await dbSaveTables(); renderTables();
 }
 
-// Retire un invité d'une table
+// Retire un invité d'une table (il réapparaît dans la liste)
 async function removeFromTable(tableId, guestId) {
-  const t = state.tables.find(x=>x.id===Number(tableId));
-  if(!t) return;
+  const t = state.tables.find(x=>x.id===Number(tableId)); if(!t) return;
   t.places = t.places.filter(p=>String(p.guestId)!==String(guestId));
-  await dbSaveTables();
-  renderTables();
+  await dbSaveTables(); renderTables();
 }
 
-// Rendu complet du panneau plan de table
 function renderTables() {
-  // ── Filtres select catégorie ──
   const catEl = $('tableFilterCat');
   if(catEl && catEl.innerHTML === '<option value="">Toutes catégories</option>') {
     catEl.innerHTML = '<option value="">Toutes catégories</option>'
@@ -2447,12 +2602,11 @@ function renderTables() {
   const search = $('tableSearchInv')?.value.toLowerCase()||'';
   const catFilter = $('tableFilterCat')?.value||'';
 
-  // ── Synthèse ──
+  // Synthèse en haut de la feuille
   const totalEligibles = state.guests.filter(g=>g.relig_type==='repas'&&g.relig_rep_repas!=='non');
   const totalPersonnesEligibles = totalEligibles.reduce((s,g)=>s+g.nb,0);
   const placed = new Set(state.tables.flatMap(t=>t.places.map(p=>String(p.guestId))));
-  const placedGuests = totalEligibles.filter(g=>placed.has(String(g.id)));
-  const placedPersonnes = placedGuests.reduce((s,g)=>s+g.nb,0);
+  const placedPersonnes = totalEligibles.filter(g=>placed.has(String(g.id))).reduce((s,g)=>s+g.nb,0);
   const nonRepondants = totalEligibles.filter(g=>!g.relig_repondu).length;
   const synEl = $('tablesSynthese');
   if(synEl) synEl.innerHTML = `
@@ -2461,20 +2615,18 @@ function renderTables() {
     ${sC(totalPersonnesEligibles-placedPersonnes,'Restant à placer','a')}
     ${sC(nonRepondants,'Sans réponse','n')}`;
 
-  // ── Liste invités à placer ──
+  // Liste des invités à placer
   const eligibles = guestsEligiblesRepas();
   const filtered = eligibles.filter(g=>
-    (!search || g.nom.toLowerCase().includes(search)) &&
-    (!catFilter || g.cat === catFilter)
+    (!search || g.nom.toLowerCase().includes(search)) && (!catFilter || g.cat === catFilter)
   );
-
   const countEl = $('tablesNonPlacesCount');
   if(countEl) countEl.textContent = `— ${eligibles.length} à placer`;
 
-  // Détermine si un invité n'a pas encore répondu (couleur rose)
-  const isPending = g => !g.relig_repondu;
-  const rowBg = g => isPending(g) ? '#fff0f5' : 'var(--white)';
-  const namColor = g => isPending(g) ? '#c0446a' : 'var(--text)';
+  // Couleurs rose pour les sans-réponse
+  const isPending    = g => !g.relig_repondu;
+  const rowBg        = g => isPending(g) ? '#fff0f5' : 'var(--white)';
+  const namColor     = g => isPending(g) ? '#c0446a' : 'var(--text)';
   const pendingBadge = g => isPending(g)
     ? '<span style="font-size:10px;background:#fce4ec;color:#c0446a;padding:2px 6px;border-radius:10px;margin-left:6px;">⏳ Sans réponse</span>'
     : '';
@@ -2509,28 +2661,25 @@ function renderTables() {
     }
   }
 
-  // ── Liste des tables ──
-  const tablesEl = $('tablesList');
-  if(!tablesEl) return;
+  // Tables créées avec leurs invités
+  const tablesEl = $('tablesList'); if(!tablesEl) return;
   if(!state.tables.length) {
     tablesEl.innerHTML = '<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px;">Aucune table créée.<br>Utilisez le formulaire ci-dessus pour créer votre première table.</div>';
     return;
   }
-
   tablesEl.innerHTML = state.tables.map(t=>{
     const total = t.places.reduce((s,p)=>s+p.nb,0);
     return `<div class="card" style="margin-bottom:14px;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
         <input style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:500;color:var(--dark);border:none;background:transparent;flex:1;min-width:150px;"
           value="${t.nom}" onchange="renameTable(${t.id},this.value)" title="Cliquer pour renommer">
-        <span style="font-size:12px;color:var(--muted);">${t.places.length} groupe(s) · ${total} pers.</span>
+        <span style="font-size:12px;color:var(--muted);">${t.places.length} invité(s) · ${total} pers.</span>
         <button class="btn btn-danger btn-sm" onclick="deleteTable(${t.id})">🗑️ Supprimer</button>
       </div>
       ${t.places.length === 0
         ? `<div style="text-align:center;color:var(--muted);font-size:13px;padding:12px;">Table vide — affectez des invités depuis la liste de gauche.</div>`
         : `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
             ${t.places.map((p,i)=>{
-              // Retrouve l'invité pour connaître son statut de réponse
               const g = state.guests.find(x=>String(x.id)===String(p.guestId));
               const pending = g && !g.relig_repondu;
               const bg = pending ? '#fff0f5' : (i%2===0?'var(--white)':'var(--cream)');
@@ -2541,7 +2690,7 @@ function renderTables() {
                   ${g?.regime?`<span style="font-size:10px;background:#e8f4ec;color:var(--green);padding:2px 6px;border-radius:10px;margin-left:6px;">🥗 ${g.regime}</span>`:''}
                   ${pending?'<span style="font-size:10px;background:#fce4ec;color:#c0446a;padding:2px 6px;border-radius:10px;margin-left:6px;">⏳ Sans réponse</span>':''}
                 </div>
-                <button class="btn btn-outline btn-sm" onclick="removeFromTable(${t.id},'${p.guestId}')" title="Retirer de la table" style="font-size:11px;">✕ Retirer</button>
+                <button class="btn btn-outline btn-sm" onclick="removeFromTable(${t.id},'${p.guestId}')" style="font-size:11px;">✕ Retirer</button>
               </div>`;
             }).join('')}
           </div>`
@@ -2550,26 +2699,21 @@ function renderTables() {
   }).join('');
 }
 
-// Affecte l'invité depuis le select inline de la liste
+// Lit la table sélectionnée dans le menu et affecte l'invité
 function assignFromSelect(guestId) {
-  const el = $(`selectTable_${guestId}`);
-  if(!el) return;
+  const el = $(`selectTable_${guestId}`); if(!el) return;
   const tableId = el.value;
   if(!tableId) return alert('Veuillez choisir une table dans le menu déroulant.');
   assignToTable(guestId, tableId);
 }
 
-// Export CSV du plan de table
-// Une ligne par personne avec : Table, Nom, Catégorie, Régime
+// Export CSV : Table ; Nom ; Catégorie ; Régime (ligne vide entre chaque table)
 function exportTables() {
   if(!state.tables.length) return alert('Aucune table à exporter.');
-
   const headers = ['Table','Nom','Catégorie','Régime alimentaire'];
   const rows = [];
-
   state.tables.forEach(t => {
     if(t.places.length === 0) {
-      // Inclut quand même les tables vides
       rows.push([t.nom, '— Table vide —', '', '']);
     } else {
       t.places.forEach(p => {
@@ -2577,14 +2721,9 @@ function exportTables() {
         rows.push([t.nom, p.guestNom, p.guestCat, g?.regime||'']);
       });
     }
-    // Ligne vide entre les tables pour la lisibilité dans Excel
     rows.push(['','','','']);
   });
-
-  const escape = v => {
-    const s = String(v??'');
-    return s.includes(';')||s.includes('"')||s.includes('\n') ? `"${s.replace(/"/g,'""')}"` : s;
-  };
+  const escape = v => { const s=String(v??''); return s.includes(';')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s; };
   const csv = '\uFEFF' + [headers, ...rows].map(r=>r.map(escape).join(';')).join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a');
@@ -2593,11 +2732,27 @@ function exportTables() {
   a.click();
 }
 
-// ══ RENDER ALL ══
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 19. RAFRAÎCHISSEMENT GLOBAL
+//    renderAll() est appelée après toute modification de données.
+//    Elle appelle chaque fonction de rendu dans l'ordre logique.
+// ════════════════════════════════════════════════════════════════════════════════
+
 function renderAll(){
-  renderCategories();renderRegimeList();renderGuestsTable();renderCivilTable();renderReligTable();
-  renderSynthese();renderBudget();renderDepenses();renderReglements();renderTables();renderBackupList();
+  renderCategories();   // Menus déroulants de catégories
+  renderRegimeList();   // Liste des régimes dans Paramétrages
+  renderGuestsTable();  // Tableau Invités
+  renderCivilTable();   // Tableau Civil
+  renderReligTable();   // Tableau Religieux (avec menu Régime)
+  renderSynthese();     // Compteurs et listes Synthèse
+  renderBudget();       // Estimation budgétaire repas
+  renderDepenses();     // Postes de dépenses
+  renderReglements();   // Règlements et synthèses
+  renderTables();       // Plan de table
+  renderBackupList();   // Historique des sauvegardes
 }
+
 </script>
 </body>
 </html>
